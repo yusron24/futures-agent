@@ -9,9 +9,9 @@ app.use(cors());
 app.use(express.json());
 
 const cache = new NodeCache({ stdTTL: 60 });
-const SCAN_INTERVAL = 30000;
+const SCAN_INTERVAL = 10000;
 const MAX_PAIRS = 150;
-const CONFIDENCE_THRESHOLD = 60;
+const CONFIDENCE_THRESHOLD = 85;
 
 // ─── Coinglass API ───
 const COINGLASS_API_KEY = process.env.COINGLASS_API_KEY || '';
@@ -485,6 +485,28 @@ app.get('/debug/fapi', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
+// ─── Endpoint: Detail Sinyal untuk Satu Pasangan ───
+app.get('/api/v1/signal/:symbol', async (req, res) => {
+  const symbol = req.params.symbol;
+  const timeframe = req.query.timeframe || '1h'; // default 1h
+
+  try {
+    // Ambil data real-time untuk simbol ini
+    const data = await fetchFuturesData(symbol);
+    if (!data) {
+      return res.status(404).json({ error: 'Symbol not found or data unavailable' });
+    }
+
+    // Analisis data (gunakan fungsi analyzeFull dari V20)
+    const analysis = await analyzeFull(symbol, timeframe);
+
+    // Jika berhasil, kirimkan data sinyal
+    res.json({ success: true, signal: analysis });
+  } catch (err) {
+    console.error(`❌ Error fetching detail for ${symbol}:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 app.listen(PORT, () => {
   console.log(`🚀 Futures Agent V20 (Super Lengkap) running on port ${PORT}`);
   // Scan pertama dengan timeframe default 1h
