@@ -1,4 +1,4 @@
-// server.js - V20 FINAL (Lengkap + Fix Error)
+// server.js - V20 FINAL (Robust & Error Free)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -45,8 +45,9 @@ async function getFuturesSymbols() {
 
   try {
     const { data: tickers } = await axios.get('https://fapi.binance.com/fapi/v1/ticker/24hr', axiosConfig);
-    const usdtTickers = tickers.filter(t => t.symbol.endsWith('USDT'));
-    usdtTickers.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+    const usdtTickers = tickers
+      .filter(t => t.symbol.endsWith('USDT'))
+      .sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
     const symbols = usdtTickers.slice(0, MAX_PAIRS).map(t => t.symbol);
     console.log(`✅ Mengambil ${symbols.length} pasangan dari Binance Futures`);
     cache.set(cacheKey, symbols, 3600);
@@ -121,20 +122,26 @@ async function fetchCoinglassData(symbol) {
   return result;
 }
 
-// ─── Analisis Price Action Lengkap ───
+// ─── Analisis Price Action Lengkap (Dengan Pemeriksaan Data) ───
 function analyzePriceAction(candles) {
-  if (!candles || candles.length < 20) return { score: 0, signals: [], trend: 'SIDEWAYS', volumeRatio: 0 };
+  if (!candles || candles.length < 5) return { score: 0, signals: [], trend: 'SIDEWAYS', volumeRatio: 0 };
 
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2];
+  const prev2 = candles[candles.length - 3] || prev; // Menggunakan fallback jika data kurang
+  const prev3 = candles[candles.length - 4] || prev2;
+
   const close = parseFloat(last[4]);
   const open = parseFloat(last[1]);
   const high = parseFloat(last[2]);
   const low = parseFloat(last[3]);
   const volume = parseFloat(last[5]);
+
   const prevClose = parseFloat(prev[4]);
   const prevHigh = parseFloat(prev[2]);
   const prevLow = parseFloat(prev[3]);
+  const prev2High = parseFloat(prev2[2]);
+  const prev2Low = parseFloat(prev2[3]);
 
   const body = Math.abs(close - open);
   const range = high - low;
@@ -142,10 +149,23 @@ function analyzePriceAction(candles) {
   const upperWick = high - Math.max(open, close);
   const lowerWick = Math.min(open, close) - low;
 
+  // ── Volume ──
   const volumes = candles.map(c => parseFloat(c[5]));
   const avgVolume = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
   const volumeRatio = volume / (avgVolume || 1);
   const isVolumeSpike = volumeRatio > 2.0;
+
+  // ── Level (Support/Resistance) ──
+  const highs = candles.slice(-30).map(c => parseFloat(c[2]));
+  const lows = candles.slice(-30).map(c => parseFloat(c[3]));
+  const resistance = highs.length > 0 ? Math.max(...highs) : high;
+  const support = lows.length > 0 ? Math.min(...lows) : low;
+  const nearResistance = (resistance - close) / close < 0.015;
+  const nearSupport = (close - support) / close < 0.015;
+
+  // ── Round Number ──
+  const roundNumbers = [0.01, 0.02, 0.05, 0.10, 0.20, 0.50, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+  const nearRoundNumber = roundNumbers.some(r => Math.abs(close - r) / r < 0.005);
 
   let score = 0;
   let signals = [];
@@ -238,29 +258,24 @@ function analyzePriceAction(candles) {
   }
 
   // 9. Ascending / Descending Triangle
-  const recentHighs = candles.slice(-10).map(c => parseFloat(c[2]));
-  const recentLows = candles.slice(-10).map(c => parseFloat(c[3]));
-  const flatHigh = Math.max(...recentHighs.slice(-5)) - Math.min(...recentHighs.slice(-5)) < range * 0.1;
-  const higherLows = recentLows.slice(-5).every((l, i, arr) => i === 0 || l >= arr[i - 1]);
-  if (flatHigh && higherLows && close > open) {
-    score += 10;
-    signals.push('Ascending Triangle');
-  }
-  const flatLow = Math.max(...recentLows.slice(-5)) - Math.min(...recentLows.slice(-5)) < range * 0.1;
-  const lowerHighs = recentHighs.slice(-5).every((h, i, arr) => i === 0 || h <= arr[i - 1]);
-  if (flatLow && lowerHighs && close < open) {
-    score -= 10;
-    signals.push('Descending Triangle');
+  if (candles.length >= 10) {
+    const recentHighs = candles.slice(-10).map(c => parseFloat(c[2]));
+    const recentLows = candles.slice(-10).map(c => parseFloat(c[3]));
+    const flatHigh = Math.max(...recentHighs.slice(-5)) - Math.min(...recentHighs.slice(-5)) < range * 0.1;
+    const higherLows = recentLows.slice(-5).every((l, i, arr) => i === 0 || l >= arr[i - 1]);
+    if (flatHigh && higherLows && close > open) {
+      score += 10;
+      signals.push('Ascending Triangle');
+    }
+    const flatLow = Math.max(...recentLows.slice(-5)) - Math.min(...recentLows.slice(-5)) < range * 0.1;
+    const lowerHighs = recentHighs.slice(-5).every((h, i, arr) => i === 0 || h <= arr[i - 1]);
+    if (flatLow && lowerHighs && close < open) {
+      score -= 10;
+      signals.push('Descending Triangle');
+    }
   }
 
   // 10. Level Support/Resistance
-  const highs = candles.slice(-30).map(c => parseFloat(c[2]));
-  const lows = candles.slice(-30).map(c => parseFloat(c[3]));
-  const resistance = Math.max(...highs);
-  const support = Math.min(...lows);
-  const nearResistance = (resistance - close) / close < 0.015;
-  const nearSupport = (close - support) / close < 0.015;
-
   if (nearSupport && close > open) {
     score += 8;
     signals.push('Near Support');
@@ -270,8 +285,6 @@ function analyzePriceAction(candles) {
   }
 
   // 11. Round Number
-  const roundNumbers = [0.01, 0.02, 0.05, 0.10, 0.20, 0.50, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
-  const nearRoundNumber = roundNumbers.some(r => Math.abs(close - r) / r < 0.005);
   if (nearRoundNumber && close > open) {
     score += 6;
     signals.push('Round Number Support');
@@ -436,7 +449,7 @@ app.get('/api/v1/signals', (req, res) => {
   });
 });
 
-// ─── ⚠️ ENDPOINT DETAIL YANG SEBELUMNYA HILANG ⚠️ ───
+// ─── Endpoint Detail Sinyal ───
 app.get('/api/v1/signal/:symbol', async (req, res) => {
   const symbol = req.params.symbol;
   const timeframe = req.query.timeframe || '1h';
