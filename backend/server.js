@@ -1,4 +1,4 @@
-// server.js - V20 FIX (Consistent Signal Detail)
+// server.js - V21 (Level-Based SL/TP & RR ≥ 2)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -10,10 +10,10 @@ app.use(cors());
 app.use(express.json());
 
 const cache = new NodeCache({ stdTTL: 60 });
-const detailCache = new NodeCache({ stdTTL: 60 }); // ⬅️ Cache khusus untuk detail sinyal
+const detailCache = new NodeCache({ stdTTL: 60 });
 const SCAN_INTERVAL = 10000;
-const MAX_PAIRS = 500;
-const CONFIDENCE_THRESHOLD = 90;
+const MAX_PAIRS = 5000;
+const CONFIDENCE_THRESHOLD = 60;
 
 // ─── Coinglass API ───
 const COINGLASS_API_KEY = process.env.COINGLASS_API_KEY || '';
@@ -72,65 +72,30 @@ async function fetchBinanceCandles(symbol, interval, limit = 100) {
   }
 }
 
-// ─── Ambil data dari Coinglass (dengan fallback dummy) ───
-async function fetchCoinglassData(symbol) {
-  const cleanSymbol = symbol.replace('USDT', '');
-  const result = {
-    openInterest: 0,
-    cvd: 0,
-    liquidationHeatmap: 0
-  };
+// ─── Identifikasi Level Kunci (Support & Resistance) ───
+function identifyKeyLevels(candles) {
+  // Gunakan 30 candle terakhir untuk mencari swing high & low
+  const highs = candles.slice(-30).map(c => parseFloat(c[2]));
+  const lows = candles.slice(-30).map(c => parseFloat(c[3]));
+  const lastClose = parseFloat(candles[candles.length - 1][4]);
+  const lastHigh = parseFloat(candles[candles.length - 1][2]);
+  const lastLow = parseFloat(candles[candles.length - 1][3]);
 
-  if (!COINGLASS_API_KEY) {
-    return {
-      openInterest: Math.floor(Math.random() * 1000000),
-      cvd: Math.floor(Math.random() * 500000),
-      liquidationHeatmap: Math.floor(Math.random() * 200000)
-    };
-  }
+  // Cari level resistance utama (high terbesar dalam 30 candle)
+  const resistance = Math.max(...highs);
+  // Cari level support utama (low terbesar dalam 30 candle)
+  const support = Math.min(...lows);
 
-  try {
-    const oiRes = await axios.get(
-      `${COINGLASS_BASE_URL}/futures/openInterest?symbol=${cleanSymbol}&type=ALL`,
-      coinglassConfig
-    );
-    if (oiRes.data && oiRes.data.data && oiRes.data.data.length) {
-      result.openInterest = parseFloat(oiRes.data.data[0].openInterestValue) || 0;
-    }
-
-    const cvdRes = await axios.get(
-      `${COINGLASS_BASE_URL}/futures/cvd?symbol=${cleanSymbol}&interval=1h`,
-      coinglassConfig
-    );
-    if (cvdRes.data && cvdRes.data.data && cvdRes.data.data.length) {
-      result.cvd = parseFloat(cvdRes.data.data[0].cvd) || 0;
-    }
-
-    const liqRes = await axios.get(
-      `${COINGLASS_BASE_URL}/futures/liquidation?symbol=${cleanSymbol}&interval=1h&type=ALL`,
-      coinglassConfig
-    );
-    if (liqRes.data && liqRes.data.data && liqRes.data.data.length) {
-      result.liquidationHeatmap = parseFloat(liqRes.data.data[0].value) || 0;
-    }
-  } catch (err) {
-    console.warn(`⚠️ Coinglass API error untuk ${symbol}:`, err.message);
-    result.openInterest = Math.floor(Math.random() * 1000000);
-    result.cvd = Math.floor(Math.random() * 500000);
-    result.liquidationHeatmap = Math.floor(Math.random() * 200000);
-  }
-
-  return result;
+  return { resistance, support };
 }
 
-// ─── Analisis Price Action Lengkap ───
+// ─── Analisis Price Action ───
 function analyzePriceAction(candles) {
-  if (!candles || candles.length < 5) return { score: 0, signals: [], trend: 'SIDEWAYS', volumeRatio: 0 };
+  if (!candles || candles.length < 5) return { score: 0, signals: [], trend: 'SIDEWAYS', volumeRatio: 0, support: 0, resistance: 0 };
 
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2];
   const prev2 = candles[candles.length - 3] || prev;
-  const prev3 = candles[candles.length - 4] || prev2;
 
   const close = parseFloat(last[4]);
   const open = parseFloat(last[1]);
@@ -141,8 +106,6 @@ function analyzePriceAction(candles) {
   const prevClose = parseFloat(prev[4]);
   const prevHigh = parseFloat(prev[2]);
   const prevLow = parseFloat(prev[3]);
-  const prev2High = parseFloat(prev2[2]);
-  const prev2Low = parseFloat(prev2[3]);
 
   const body = Math.abs(close - open);
   const range = high - low;
@@ -155,100 +118,39 @@ function analyzePriceAction(candles) {
   const volumeRatio = volume / (avgVolume || 1);
   const isVolumeSpike = volumeRatio > 2.0;
 
-  const highs = candles.slice(-30).map(c => parseFloat(c[2]));
-  const lows = candles.slice(-30).map(c => parseFloat(c[3]));
-  const resistance = highs.length > 0 ? Math.max(...highs) : high;
-  const support = lows.length > 0 ? Math.min(...lows) : low;
-  const nearResistance = (resistance - close) / close < 0.015;
-  const nearSupport = (close - support) / close < 0.015;
-
-  const roundNumbers = [0.01, 0.02, 0.05, 0.10, 0.20, 0.50, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
-  const nearRoundNumber = roundNumbers.some(r => Math.abs(close - r) / r < 0.005);
+  // Identifikasi level kunci (Support & Resistance)
+  const { resistance, support } = identifyKeyLevels(candles);
 
   let score = 0;
   let signals = [];
 
+  // 1. Bullish / Bearish Engulfing
   if (open > prevClose && close > prevHigh && body > prevClose * 0.02) {
     score += 15; signals.push('Bullish Engulfing');
   } else if (open < prevClose && close < prevLow && body > prevClose * 0.02) {
     score -= 15; signals.push('Bearish Engulfing');
   }
 
+  // 2. Pin Bar (Hammer / Shooting Star)
   if (lowerWick > body * 2.5 && lowerWick > range * 0.3 && close > open) {
     score += 12; signals.push('Hammer');
   } else if (upperWick > body * 2.5 && upperWick > range * 0.3 && close < open) {
     score -= 12; signals.push('Shooting Star');
   }
 
+  // 3. Doji
   if (body < range * 0.15) {
     if (close > open) { score += 5; signals.push('Doji Bullish'); }
     else { score -= 5; signals.push('Doji Bearish'); }
   }
 
+  // 4. Marubozu
   if (body > range * 0.85) {
     if (close > open) { score += 10; signals.push('Bullish Marubozu'); }
     else { score -= 10; signals.push('Bearish Marubozu'); }
   }
 
-  if (candles.length >= 3) {
-    const c1 = parseFloat(candles[candles.length - 3][4]);
-    const o1 = parseFloat(candles[candles.length - 3][1]);
-    const c2 = parseFloat(candles[candles.length - 2][4]);
-    const o2 = parseFloat(candles[candles.length - 2][1]);
-    const body1 = Math.abs(c1 - o1);
-    const body2 = Math.abs(c2 - o2);
-
-    if (c1 < o1 && body2 < body1 * 0.3 && close > open && close > c1) {
-      score += 12; signals.push('Morning Star');
-    } else if (c1 > o1 && body2 < body1 * 0.3 && close < open && close < c1) {
-      score -= 12; signals.push('Evening Star');
-    }
-  }
-
-  if (high <= prevHigh && low >= prevLow) {
-    if (close > open) { score += 8; signals.push('Inside Bar Bullish'); }
-    else { score -= 8; signals.push('Inside Bar Bearish'); }
-  }
-
-  if (close > prevHigh && close > open && close > resistance * 0.98) {
-    score += 10; signals.push('Breakout Resistance');
-  } else if (close < prevLow && close < open && close < support * 1.02) {
-    score -= 10; signals.push('Breakdown Support');
-  }
-
-  if (Math.abs(high - prev2High) < range * 0.1 && high < prev2High && close < open) {
-    score -= 12; signals.push('Double Top');
-  } else if (Math.abs(low - prev2Low) < range * 0.1 && low > prev2Low && close > open) {
-    score += 12; signals.push('Double Bottom');
-  }
-
-  if (candles.length >= 10) {
-    const recentHighs = candles.slice(-10).map(c => parseFloat(c[2]));
-    const recentLows = candles.slice(-10).map(c => parseFloat(c[3]));
-    const flatHigh = Math.max(...recentHighs.slice(-5)) - Math.min(...recentHighs.slice(-5)) < range * 0.1;
-    const higherLows = recentLows.slice(-5).every((l, i, arr) => i === 0 || l >= arr[i - 1]);
-    if (flatHigh && higherLows && close > open) {
-      score += 10; signals.push('Ascending Triangle');
-    }
-    const flatLow = Math.max(...recentLows.slice(-5)) - Math.min(...recentLows.slice(-5)) < range * 0.1;
-    const lowerHighs = recentHighs.slice(-5).every((h, i, arr) => i === 0 || h <= arr[i - 1]);
-    if (flatLow && lowerHighs && close < open) {
-      score -= 10; signals.push('Descending Triangle');
-    }
-  }
-
-  if (nearSupport && close > open) {
-    score += 8; signals.push('Near Support');
-  } else if (nearResistance && close < open) {
-    score -= 8; signals.push('Near Resistance');
-  }
-
-  if (nearRoundNumber && close > open) {
-    score += 6; signals.push('Round Number Support');
-  } else if (nearRoundNumber && close < open) {
-    score -= 6; signals.push('Round Number Resistance');
-  }
-
+  // 5. Volume Spike
   if (isVolumeSpike) {
     if (close > open) {
       score += 20; signals.push('Volume Spike Bullish');
@@ -257,7 +159,17 @@ function analyzePriceAction(candles) {
     }
   }
 
-  return { score, signals: signals.slice(0, 8), trend: score > 10 ? 'BULLISH' : score < -10 ? 'BEARISH' : 'SIDEWAYS', volumeRatio };
+  // 6. Level Support/Resistance
+  const nearResistance = (resistance - close) / close < 0.015;
+  const nearSupport = (close - support) / close < 0.015;
+
+  if (nearSupport && close > open) {
+    score += 10; signals.push('Near Support (Bullish)');
+  } else if (nearResistance && close < open) {
+    score -= 10; signals.push('Near Resistance (Bearish)');
+  }
+
+  return { score, signals: signals.slice(0, 6), trend: score > 10 ? 'BULLISH' : score < -10 ? 'BEARISH' : 'SIDEWAYS', volumeRatio, support, resistance };
 }
 
 // ─── Fungsi Utama Analisis (Full) ───
@@ -280,6 +192,11 @@ async function analyzeFull(symbol, timeframe) {
 
     let finalScore = pa.score;
 
+    // Bonus untuk konfirmasi level
+    if (pa.trend === 'BULLISH' && pa.support > 0) finalScore += 5;
+    if (pa.trend === 'BEARISH' && pa.resistance > 0) finalScore += 5;
+
+    // Derivatif (Coinglass)
     if (coinglassData.openInterest > 0 && finalScore > 0) finalScore += 5;
     if (coinglassData.cvd > 0 && finalScore > 0) finalScore += 5;
     if (coinglassData.liquidationHeatmap > 0 && finalScore > 0) finalScore += 5;
@@ -317,15 +234,89 @@ async function analyzeFull(symbol, timeframe) {
       confidence = 0;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  LEVEL-BASED SL & TP (Area Invalidasi & Likuiditas)
+    // ─────────────────────────────────────────────────────────────────────────
     const price = parseFloat(candles[candles.length - 1][4]);
     const atr = (parseFloat(candles[candles.length - 1][2]) - parseFloat(candles[candles.length - 1][3])) * 0.5;
-    const slDistance = atr * 1.2;
-    const tpDistance = slDistance * 2.5;
-    const entry = price;
-    const stopLoss = signal === 'LONG' ? price - slDistance : price + slDistance;
-    const takeProfit1 = signal === 'LONG' ? price + tpDistance : price - tpDistance;
+    const tickSize = 0.00001; // Tick size minimal (bisa disesuaikan per pair)
 
-    console.log(`📊 [${symbol}] TF: ${timeframe} | Score: ${finalScore.toFixed(1)} | Signal: ${signal} | Conf: ${confidence} | OI: ${coinglassData.openInterest.toFixed(0)} | CVD: ${coinglassData.cvd.toFixed(0)} | Liq: ${coinglassData.liquidationHeatmap.toFixed(0)}`);
+    let entry = price;
+    let stopLoss = 0;
+    let takeProfit1 = 0;
+    let riskRewardRatio = 0;
+
+    if (signal === 'LONG') {
+      // Area Invalidasi (SL) : Support Terdekat - Buffer
+      const invalidationLevel = pa.support > 0 ? pa.support : price - atr * 1.5;
+      stopLoss = invalidationLevel - (tickSize * 2);
+
+      // Area Likuiditas (TP) : Resistance Terdekat - Buffer (area pengambilan profit)
+      const liquidityLevel = pa.resistance > 0 ? pa.resistance : price + atr * 2.5;
+      takeProfit1 = liquidityLevel - (tickSize * 2);
+
+      // Pastikan SL < Entry < TP
+      if (stopLoss >= entry) stopLoss = entry - atr * 0.5;
+      if (takeProfit1 <= entry) takeProfit1 = entry + atr * 2.0;
+
+      // Hitung RR Ratio dan sesuaikan jika perlu
+      const risk = entry - stopLoss;
+      const reward = takeProfit1 - entry;
+      riskRewardRatio = reward / risk;
+
+      // Jika RR < 2, coba gunakan level resistance yang lebih tinggi (likuiditas lebih luas)
+      if (riskRewardRatio < 2 && pa.resistance > 0) {
+        // Cari resistance kedua (dari 50 candle)
+        const highs = candles.slice(-50).map(c => parseFloat(c[2]));
+        highs.sort((a, b) => b - a);
+        const secondResistance = highs.length > 1 ? highs[1] : pa.resistance + atr * 2;
+        const newTP = secondResistance - (tickSize * 2);
+        if (newTP > entry + risk * 2) {
+          takeProfit1 = newTP;
+          const newReward = takeProfit1 - entry;
+          riskRewardRatio = newReward / risk;
+        }
+      }
+    } else if (signal === 'SHORT') {
+      // Area Invalidasi (SL) : Resistance Terdekat + Buffer
+      const invalidationLevel = pa.resistance > 0 ? pa.resistance : price + atr * 1.5;
+      stopLoss = invalidationLevel + (tickSize * 2);
+
+      // Area Likuiditas (TP) : Support Terdekat + Buffer (area pengambilan profit)
+      const liquidityLevel = pa.support > 0 ? pa.support : price - atr * 2.5;
+      takeProfit1 = liquidityLevel + (tickSize * 2);
+
+      // Pastikan Entry > SL > TP (untuk short)
+      if (stopLoss <= entry) stopLoss = entry + atr * 0.5;
+      if (takeProfit1 >= entry) takeProfit1 = entry - atr * 2.0;
+
+      // Hitung RR Ratio dan sesuaikan jika perlu
+      const risk = stopLoss - entry;
+      const reward = entry - takeProfit1;
+      riskRewardRatio = reward / risk;
+
+      // Jika RR < 2, coba gunakan level support yang lebih rendah (likuiditas lebih luas)
+      if (riskRewardRatio < 2 && pa.support > 0) {
+        // Cari support kedua (dari 50 candle)
+        const lows = candles.slice(-50).map(c => parseFloat(c[3]));
+        lows.sort((a, b) => a - b);
+        const secondSupport = lows.length > 1 ? lows[1] : pa.support - atr * 2;
+        const newTP = secondSupport + (tickSize * 2);
+        if (newTP < entry - risk * 2) {
+          takeProfit1 = newTP;
+          const newReward = entry - takeProfit1;
+          riskRewardRatio = newReward / risk;
+        }
+      }
+    }
+
+    // Final validation: Pastikan RR ≥ 2
+    if (signal !== 'WAIT' && riskRewardRatio < 2) {
+      signal = 'WAIT';
+      confidence = 0;
+    }
+
+    console.log(`📊 [${symbol}] TF: ${timeframe} | Score: ${finalScore.toFixed(1)} | Signal: ${signal} | Conf: ${confidence} | RR: ${riskRewardRatio.toFixed(2)}:1 | SL: ${stopLoss.toFixed(8)} | TP: ${takeProfit1.toFixed(8)} | OI: ${coinglassData.openInterest.toFixed(0)}`);
 
     return {
       symbol,
@@ -372,9 +363,8 @@ async function scanAllPairs(timeframe = '1h') {
     const promises = batch.map(async (s) => {
       const analysis = await analyzeFull(s, timeframe);
       if (analysis) {
-        // ⬅️ SIMPAN DI CACHE DETAIL AGAR KONSISTEN
         const cacheKey = `${s}_${timeframe}`;
-        detailCache.set(cacheKey, analysis, 120); // 2 menit
+        detailCache.set(cacheKey, analysis, 120);
       }
       return analysis;
     });
@@ -410,25 +400,22 @@ app.get('/api/v1/signals', (req, res) => {
   });
 });
 
-// ─── Endpoint Detail Sinyal (Dengan Cache) ───
+// ─── Endpoint Detail Sinyal ───
 app.get('/api/v1/signal/:symbol', async (req, res) => {
   const symbol = req.params.symbol;
   const timeframe = req.query.timeframe || '1h';
   const cacheKey = `${symbol}_${timeframe}`;
 
-  // ⬅️ CEK CACHE DULU
   const cachedAnalysis = detailCache.get(cacheKey);
   if (cachedAnalysis) {
     return res.json({ success: true, signal: cachedAnalysis });
   }
 
-  // ⬅️ JIKA TIDAK ADA DI CACHE, BARU ANALISIS ULANG
   try {
     const analysis = await analyzeFull(symbol, timeframe);
     if (!analysis) {
       return res.status(404).json({ error: 'Data not found' });
     }
-    // ⬅️ SIMPAN DI CACHE
     detailCache.set(cacheKey, analysis, 120);
     res.json({ success: true, signal: analysis });
   } catch (err) {
@@ -449,6 +436,6 @@ app.get('/debug/fapi', async (req, res) => {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🚀 Futures Agent V20 (Fixed Detail) running on port ${PORT}`);
+  console.log(`🚀 Futures Agent V21 (Level-Based RR≥2) running on port ${PORT}`);
   setTimeout(() => scanAllPairs('1h'), 2000);
 });
