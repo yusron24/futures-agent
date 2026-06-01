@@ -1,3 +1,4 @@
+// server.js - Final Version (Dinoiki + Claude Sonnet 4.6)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -13,14 +14,9 @@ const SCAN_INTERVAL = 60000;
 const MAX_PAIRS = 30;
 const CONFIDENCE_THRESHOLD = 90;
 
-// ⚠️ Ambil Environment Variables. Jika gagal, aplikasi tetap jalan dengan pesan error
-const AI_API_KEY = process.env.AI_API_KEY; 
-const AI_API_URL = process.env.AI_API_URL || 'https://ai.dinoiki.com/v1/chat/completions';
-
-// Tambahkan pengecekan API Key saat startup
-if (!AI_API_KEY) {
-  console.error('⚠️ PERINGATAN: AI_API_KEY tidak ditemukan! Sinyal tidak akan dihasilkan.');
-}
+// Environment Variables
+const AI_API_KEY = process.env.DINOIKI_API_KEY;
+const AI_API_URL = 'https://ai.dinoiki.com/v1/chat/completions';
 
 let scanResults = [];
 let lastScanTime = null;
@@ -39,7 +35,9 @@ async function getTopVolumeSymbols() {
     const symbols = usdtTickers.slice(0, MAX_PAIRS).map(t => t.symbol);
     cache.set(cacheKey, symbols, 3600);
     return symbols;
-  } catch { return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']; }
+  } catch {
+    return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
+  }
 }
 
 // ─── 2. Ambil 500 candle 1h ───
@@ -47,7 +45,9 @@ async function fetchCandles(symbol) {
   try {
     const { data } = await axios.get(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=500`);
     return data;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // ─── 3. Analisis Price Action ───
@@ -86,50 +86,72 @@ function analyzePriceAction(candles) {
   return { close, high, low, open, support, resistance, volRatio, patterns, bodyRatio, upperWick, lowerWick };
 }
 
-// ─── 4. Analisis AI dengan Claude Sonnet 4.6 via Dinoiki ───
-async function analyzeWithAgent(symbol) {
-  if (!AI_API_KEY) {
-    console.warn(`[${symbol}] AI_API_KEY tidak ada, dilewati.`);
-    return { action: 'WAIT', confidence: 0 };
+// ─── 4. Ambil derivatif dari Binance ───
+async function fetchDerivatives(symbol) {
+  try {
+    const [oi, funding, lsRatio] = await Promise.all([
+      axios.get(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`),
+      axios.get(`https://fapi.binance.com/fapi/v1/fundingInfo?symbol=${symbol}`),
+      axios.get(`https://fapi.binance.com/fapi/v1/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=1`)
+    ]);
+    return {
+      oi: parseFloat(oi.data.sumOpenInterestValue || 0),
+      funding: parseFloat(funding.data[0]?.fundingRate || 0),
+      lsRatio: parseFloat(lsRatio.data[0]?.longShortRatio || 1)
+    };
+  } catch {
+    return { oi: 0, funding: 0, lsRatio: 1 };
   }
+}
 
+// ─── 5. Analisis AI dengan Claude (Dinoiki) ───
+async function analyzeWithAgent(symbol) {
   const candles = await fetchCandles(symbol);
   if (!candles) return null;
-  
-  const [oi, funding, lsRatio, ticker] = await Promise.all([
-    axios.get(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`),
-    axios.get(`https://fapi.binance.com/fapi/v1/fundingInfo?symbol=${symbol}`),
-    axios.get(`https://fapi.binance.com/fapi/v1/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=1`),
-    axios.get(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${symbol}`)
-  ]);
-  
   const pa = analyzePriceAction(candles);
   if (!pa) return null;
   
-  const oiValue = parseFloat(oi.data.sumOpenInterestValue || 0);
-  const fundingRate = parseFloat(funding.data[0]?.fundingRate || 0);
-  const ls = parseFloat(lsRatio.data[0]?.longShortRatio || 1);
+  const der = await fetchDerivatives(symbol);
+  const ticker = await axios.get(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${symbol}`);
   const price = parseFloat(ticker.data.lastPrice);
-  
+
+  // System Prompt
   const systemPrompt = `
-Anda adalah AI Agent trading futures crypto profesional. Tugas Anda adalah menganalisis data pasar dan memberikan sinyal trading (LONG/SHORT/WAIT). 
-Anda harus mengembalikan respons Anda sebagai objek JSON mentah. 
-JSON harus berisi: "action" (LONG/SHORT/WAIT), "entry" (harga saat ini), "stopLoss" (level invalidasi), "takeProfit" (level likuiditas), "confidence" (0-100), "reasoning" (penjelasan singkat), dan "rr" (rasio risk:reward). 
-Semua level harus presisi. Confidence harus >= 90. RR harus >= 2. Jangan gunakan format markdown.
+Anda adalah AI Agent trading futures crypto profesional. Respons Anda hanya boleh berupa JSON mentah, tanpa markdown atau teks tambahan.
+Anda hanya boleh menggunakan data pasar yang diberikan di User Message sebagai satu-satunya sumber kebenaran. Jangan mengasumsikan atau mencari data di luar yang diberikan.
+Tugas Anda: analisis data pasar dan berikan keputusan trading "LONG", "SHORT", atau "WAIT".
+Jika keputusan adalah "LONG" atau "SHORT", hitung:
+- entry = harga saat ini (dari data yang diberikan)
+- stopLoss = level invalidasi (support untuk LONG, resistance untuk SHORT) yang presisi
+- takeProfit = level likuiditas (resistance untuk LONG, support untuk SHORT) yang presisi
+- confidence = angka antara 90-100
+- rr = rasio risk:reward, minimal 2.0 (contoh: "1:2.5")
+Jangan menolak memberikan sinyal dengan alasan "data tidak lengkap". Data yang diberikan sudah cukup untuk analisis trading profesional.
+Format respons JSON:
+{
+  "action": "LONG" atau "SHORT" atau "WAIT",
+  "entry": number,
+  "stopLoss": number,
+  "takeProfit": number,
+  "confidence": number,
+  "reasoning": "penjelasan singkat",
+  "rr": "string"
+}
 `;
 
+  // User Message – data real-time
   const userMessage = `
-Data pasar untuk ${symbol} (500 candle 1h):
+Data pasar real-time untuk ${symbol} (500 candle 1h):
 - Harga saat ini: ${price}
-- Support terdekat: ${pa.support.toFixed(2)}
-- Resistance terdekat: ${pa.resistance.toFixed(2)}
+- Support terdekat: ${pa.support}
+- Resistance terdekat: ${pa.resistance}
 - Body Ratio: ${pa.bodyRatio.toFixed(2)}
-- Upper Wick: ${pa.upperWick.toFixed(4)}, Lower Wick: ${pa.lowerWick.toFixed(4)}
 - Volume Ratio: ${pa.volRatio.toFixed(2)}
-- Pola terdeteksi: ${pa.patterns.join(', ') || 'Tidak ada'}
-- Open Interest: ${oiValue.toFixed(0)}
-- Funding Rate: ${(fundingRate * 100).toFixed(4)}%
-- Long/Short Ratio: ${ls.toFixed(2)}
+- Pola Candlestick: ${pa.patterns.join(', ') || 'Tidak ada'}
+- Open Interest: ${der.oi}
+- Funding Rate: ${(der.funding * 100).toFixed(4)}%
+- Long/Short Ratio: ${der.lsRatio.toFixed(2)}
+Analisis data ini dan berikan keputusan trading terbaik. Data ini lengkap dan valid.
 `;
 
   try {
@@ -139,8 +161,7 @@ Data pasar untuk ${symbol} (500 candle 1h):
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage }
       ],
-      max_tokens: 500,
-      temperature: 0.1
+      max_tokens: 500
     };
 
     const res = await axios.post(AI_API_URL, requestData, {
@@ -163,19 +184,18 @@ Data pasar untuk ${symbol} (500 candle 1h):
     }
     return decision;
   } catch (error) {
-    console.error(`[${symbol}] Error Dinoiki API:`, error.response?.data || error.message);
+    console.error(`[${symbol}] Error:`, error.message);
     return { action: 'WAIT', confidence: 0 };
   }
 }
 
-// ─── 5. Scheduler ───
-async function scanAllPairs() {
+// ─── 6. Scheduler ───
+setInterval(async () => {
   if (isScanning) return;
   isScanning = true;
   scanCount++;
-  console.log(`\n🤖 SCAN #${scanCount} dimulai...`);
+  console.log(`\n🤖 SCAN #${scanCount}`);
   const symbols = await getTopVolumeSymbols();
-  console.log(`🔍 Memindai ${symbols.length} pasangan...`);
   const results = [];
 
   for (let i = 0; i < symbols.length; i += 5) {
@@ -183,14 +203,14 @@ async function scanAllPairs() {
     const promises = batch.map(async s => {
       const decision = await analyzeWithAgent(s);
       if (decision && decision.action !== 'WAIT') {
-        return { 
-          symbol: s, 
-          signal: decision.action, 
-          entry: decision.entry, 
-          stopLoss: decision.stopLoss, 
-          takeProfit: decision.takeProfit, 
-          confidence: decision.confidence, 
-          reasoning: decision.reasoning 
+        return {
+          symbol: s,
+          signal: decision.action,
+          entry: decision.entry,
+          stopLoss: decision.stopLoss,
+          takeProfit: decision.takeProfit,
+          confidence: decision.confidence,
+          reasoning: decision.reasoning
         };
       }
       return null;
@@ -204,9 +224,9 @@ async function scanAllPairs() {
   lastScanTime = new Date();
   isScanning = false;
   console.log(`✅ Selesai. Sinyal: ${scanResults.length}`);
-}
+}, SCAN_INTERVAL);
 
-// ─── 6. API ───
+// ─── 7. API ───
 app.get('/api/v1/signals', (req, res) => res.json({ 
   success: true, 
   signals: scanResults, 
@@ -220,14 +240,49 @@ app.get('/api/v1/signal/:symbol', async (req, res) => {
   res.json({ success: true, signal: decision });
 });
 
-// ─── 7. Start Server ───
+// ─── 8. Start Server ───
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🤖 AI Agent (Dinoiki) running on port ${PORT}`);
-  console.log('⏳ Memulai scan pertama dalam 3 detik...');
-  // Jalankan scan pertama setelah server siap
-  setTimeout(scanAllPairs, 3000);
+  console.log(`🤖 AI Agent (Dinoiki + Claude 4.6) running on port ${PORT}`);
+  setTimeout(() => {
+    console.log('⏳ Memulai scan pertama...');
+    scanAllPairs();
+  }, 3000);
 });
 
-// Scan selanjutnya berjalan otomatis setiap interval
-setInterval(scanAllPairs, SCAN_INTERVAL);
+// Tambahkan fungsi scanAllPairs yang dipanggil di atas
+async function scanAllPairs() {
+  if (isScanning) return;
+  isScanning = true;
+  scanCount++;
+  console.log(`\n🤖 SCAN #${scanCount}`);
+  const symbols = await getTopVolumeSymbols();
+  const results = [];
+
+  for (let i = 0; i < symbols.length; i += 5) {
+    const batch = symbols.slice(i, i + 5);
+    const promises = batch.map(async s => {
+      const decision = await analyzeWithAgent(s);
+      if (decision && decision.action !== 'WAIT') {
+        return {
+          symbol: s,
+          signal: decision.action,
+          entry: decision.entry,
+          stopLoss: decision.stopLoss,
+          takeProfit: decision.takeProfit,
+          confidence: decision.confidence,
+          reasoning: decision.reasoning
+        };
+      }
+      return null;
+    });
+    const batchResults = await Promise.allSettled(promises);
+    batchResults.forEach(r => { if (r.status === 'fulfilled' && r.value) results.push(r.value); });
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+
+  scanResults = results;
+  lastScanTime = new Date();
+  isScanning = false;
+  console.log(`✅ Selesai. Sinyal: ${scanResults.length}`);
+          }
