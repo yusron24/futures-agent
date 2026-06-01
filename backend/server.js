@@ -1,4 +1,4 @@
-// server.js - V20 FINAL (Robust & Error Free)
+// server.js - V20 FIX (Consistent Signal Detail)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -10,9 +10,10 @@ app.use(cors());
 app.use(express.json());
 
 const cache = new NodeCache({ stdTTL: 60 });
-const SCAN_INTERVAL = 30000;
-const MAX_PAIRS = 150;
-const CONFIDENCE_THRESHOLD = 60;
+const detailCache = new NodeCache({ stdTTL: 60 }); // ⬅️ Cache khusus untuk detail sinyal
+const SCAN_INTERVAL = 10000;
+const MAX_PAIRS = 500;
+const CONFIDENCE_THRESHOLD = 90;
 
 // ─── Coinglass API ───
 const COINGLASS_API_KEY = process.env.COINGLASS_API_KEY || '';
@@ -122,13 +123,13 @@ async function fetchCoinglassData(symbol) {
   return result;
 }
 
-// ─── Analisis Price Action Lengkap (Dengan Pemeriksaan Data) ───
+// ─── Analisis Price Action Lengkap ───
 function analyzePriceAction(candles) {
   if (!candles || candles.length < 5) return { score: 0, signals: [], trend: 'SIDEWAYS', volumeRatio: 0 };
 
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2];
-  const prev2 = candles[candles.length - 3] || prev; // Menggunakan fallback jika data kurang
+  const prev2 = candles[candles.length - 3] || prev;
   const prev3 = candles[candles.length - 4] || prev2;
 
   const close = parseFloat(last[4]);
@@ -149,13 +150,11 @@ function analyzePriceAction(candles) {
   const upperWick = high - Math.max(open, close);
   const lowerWick = Math.min(open, close) - low;
 
-  // ── Volume ──
   const volumes = candles.map(c => parseFloat(c[5]));
   const avgVolume = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
   const volumeRatio = volume / (avgVolume || 1);
   const isVolumeSpike = volumeRatio > 2.0;
 
-  // ── Level (Support/Resistance) ──
   const highs = candles.slice(-30).map(c => parseFloat(c[2]));
   const lows = candles.slice(-30).map(c => parseFloat(c[3]));
   const resistance = highs.length > 0 ? Math.max(...highs) : high;
@@ -163,54 +162,34 @@ function analyzePriceAction(candles) {
   const nearResistance = (resistance - close) / close < 0.015;
   const nearSupport = (close - support) / close < 0.015;
 
-  // ── Round Number ──
   const roundNumbers = [0.01, 0.02, 0.05, 0.10, 0.20, 0.50, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
   const nearRoundNumber = roundNumbers.some(r => Math.abs(close - r) / r < 0.005);
 
   let score = 0;
   let signals = [];
 
-  // 1. Bullish / Bearish Engulfing
   if (open > prevClose && close > prevHigh && body > prevClose * 0.02) {
-    score += 15;
-    signals.push('Bullish Engulfing');
+    score += 15; signals.push('Bullish Engulfing');
   } else if (open < prevClose && close < prevLow && body > prevClose * 0.02) {
-    score -= 15;
-    signals.push('Bearish Engulfing');
+    score -= 15; signals.push('Bearish Engulfing');
   }
 
-  // 2. Pin Bar (Hammer / Shooting Star)
   if (lowerWick > body * 2.5 && lowerWick > range * 0.3 && close > open) {
-    score += 12;
-    signals.push('Hammer');
+    score += 12; signals.push('Hammer');
   } else if (upperWick > body * 2.5 && upperWick > range * 0.3 && close < open) {
-    score -= 12;
-    signals.push('Shooting Star');
+    score -= 12; signals.push('Shooting Star');
   }
 
-  // 3. Doji
   if (body < range * 0.15) {
-    if (close > open) {
-      score += 5;
-      signals.push('Doji Bullish');
-    } else {
-      score -= 5;
-      signals.push('Doji Bearish');
-    }
+    if (close > open) { score += 5; signals.push('Doji Bullish'); }
+    else { score -= 5; signals.push('Doji Bearish'); }
   }
 
-  // 4. Marubozu
   if (body > range * 0.85) {
-    if (close > open) {
-      score += 10;
-      signals.push('Bullish Marubozu');
-    } else {
-      score -= 10;
-      signals.push('Bearish Marubozu');
-    }
+    if (close > open) { score += 10; signals.push('Bullish Marubozu'); }
+    else { score -= 10; signals.push('Bearish Marubozu'); }
   }
 
-  // 5. Morning Star / Evening Star
   if (candles.length >= 3) {
     const c1 = parseFloat(candles[candles.length - 3][4]);
     const o1 = parseFloat(candles[candles.length - 3][1]);
@@ -220,87 +199,61 @@ function analyzePriceAction(candles) {
     const body2 = Math.abs(c2 - o2);
 
     if (c1 < o1 && body2 < body1 * 0.3 && close > open && close > c1) {
-      score += 12;
-      signals.push('Morning Star');
+      score += 12; signals.push('Morning Star');
     } else if (c1 > o1 && body2 < body1 * 0.3 && close < open && close < c1) {
-      score -= 12;
-      signals.push('Evening Star');
+      score -= 12; signals.push('Evening Star');
     }
   }
 
-  // 6. Inside Bar
   if (high <= prevHigh && low >= prevLow) {
-    if (close > open) {
-      score += 8;
-      signals.push('Inside Bar Bullish');
-    } else {
-      score -= 8;
-      signals.push('Inside Bar Bearish');
-    }
+    if (close > open) { score += 8; signals.push('Inside Bar Bullish'); }
+    else { score -= 8; signals.push('Inside Bar Bearish'); }
   }
 
-  // 7. Breakout / Breakdown
   if (close > prevHigh && close > open && close > resistance * 0.98) {
-    score += 10;
-    signals.push('Breakout Resistance');
+    score += 10; signals.push('Breakout Resistance');
   } else if (close < prevLow && close < open && close < support * 1.02) {
-    score -= 10;
-    signals.push('Breakdown Support');
+    score -= 10; signals.push('Breakdown Support');
   }
 
-  // 8. Double Top / Double Bottom
   if (Math.abs(high - prev2High) < range * 0.1 && high < prev2High && close < open) {
-    score -= 12;
-    signals.push('Double Top');
+    score -= 12; signals.push('Double Top');
   } else if (Math.abs(low - prev2Low) < range * 0.1 && low > prev2Low && close > open) {
-    score += 12;
-    signals.push('Double Bottom');
+    score += 12; signals.push('Double Bottom');
   }
 
-  // 9. Ascending / Descending Triangle
   if (candles.length >= 10) {
     const recentHighs = candles.slice(-10).map(c => parseFloat(c[2]));
     const recentLows = candles.slice(-10).map(c => parseFloat(c[3]));
     const flatHigh = Math.max(...recentHighs.slice(-5)) - Math.min(...recentHighs.slice(-5)) < range * 0.1;
     const higherLows = recentLows.slice(-5).every((l, i, arr) => i === 0 || l >= arr[i - 1]);
     if (flatHigh && higherLows && close > open) {
-      score += 10;
-      signals.push('Ascending Triangle');
+      score += 10; signals.push('Ascending Triangle');
     }
     const flatLow = Math.max(...recentLows.slice(-5)) - Math.min(...recentLows.slice(-5)) < range * 0.1;
     const lowerHighs = recentHighs.slice(-5).every((h, i, arr) => i === 0 || h <= arr[i - 1]);
     if (flatLow && lowerHighs && close < open) {
-      score -= 10;
-      signals.push('Descending Triangle');
+      score -= 10; signals.push('Descending Triangle');
     }
   }
 
-  // 10. Level Support/Resistance
   if (nearSupport && close > open) {
-    score += 8;
-    signals.push('Near Support');
+    score += 8; signals.push('Near Support');
   } else if (nearResistance && close < open) {
-    score -= 8;
-    signals.push('Near Resistance');
+    score -= 8; signals.push('Near Resistance');
   }
 
-  // 11. Round Number
   if (nearRoundNumber && close > open) {
-    score += 6;
-    signals.push('Round Number Support');
+    score += 6; signals.push('Round Number Support');
   } else if (nearRoundNumber && close < open) {
-    score -= 6;
-    signals.push('Round Number Resistance');
+    score -= 6; signals.push('Round Number Resistance');
   }
 
-  // 12. Volume Spike
   if (isVolumeSpike) {
     if (close > open) {
-      score += 20;
-      signals.push('Volume Spike Bullish');
+      score += 20; signals.push('Volume Spike Bullish');
     } else {
-      score -= 20;
-      signals.push('Volume Spike Bearish');
+      score -= 20; signals.push('Volume Spike Bearish');
     }
   }
 
@@ -416,7 +369,15 @@ async function scanAllPairs(timeframe = '1h') {
   const batchSize = 50;
   for (let i = 0; i < symbols.length; i += batchSize) {
     const batch = symbols.slice(i, i + batchSize);
-    const promises = batch.map(s => analyzeFull(s, timeframe));
+    const promises = batch.map(async (s) => {
+      const analysis = await analyzeFull(s, timeframe);
+      if (analysis) {
+        // ⬅️ SIMPAN DI CACHE DETAIL AGAR KONSISTEN
+        const cacheKey = `${s}_${timeframe}`;
+        detailCache.set(cacheKey, analysis, 120); // 2 menit
+      }
+      return analysis;
+    });
     const batchResults = await Promise.allSettled(promises);
     batchResults.forEach(r => {
       if (r.status === 'fulfilled' && r.value) results.push(r.value);
@@ -449,16 +410,26 @@ app.get('/api/v1/signals', (req, res) => {
   });
 });
 
-// ─── Endpoint Detail Sinyal ───
+// ─── Endpoint Detail Sinyal (Dengan Cache) ───
 app.get('/api/v1/signal/:symbol', async (req, res) => {
   const symbol = req.params.symbol;
   const timeframe = req.query.timeframe || '1h';
+  const cacheKey = `${symbol}_${timeframe}`;
 
+  // ⬅️ CEK CACHE DULU
+  const cachedAnalysis = detailCache.get(cacheKey);
+  if (cachedAnalysis) {
+    return res.json({ success: true, signal: cachedAnalysis });
+  }
+
+  // ⬅️ JIKA TIDAK ADA DI CACHE, BARU ANALISIS ULANG
   try {
     const analysis = await analyzeFull(symbol, timeframe);
     if (!analysis) {
       return res.status(404).json({ error: 'Data not found' });
     }
+    // ⬅️ SIMPAN DI CACHE
+    detailCache.set(cacheKey, analysis, 120);
     res.json({ success: true, signal: analysis });
   } catch (err) {
     console.error(`❌ Error fetching detail for ${symbol}:`, err.message);
@@ -478,6 +449,6 @@ app.get('/debug/fapi', async (req, res) => {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🚀 Futures Agent V20 (Final) running on port ${PORT}`);
+  console.log(`🚀 Futures Agent V20 (Fixed Detail) running on port ${PORT}`);
   setTimeout(() => scanAllPairs('1h'), 2000);
 });
