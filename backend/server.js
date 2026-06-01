@@ -1,4 +1,3 @@
-// server.js - V21 (Level-Based RR≥2) - FIXED
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -11,8 +10,8 @@ app.use(express.json());
 
 const cache = new NodeCache({ stdTTL: 60 });
 const detailCache = new NodeCache({ stdTTL: 60 });
-const SCAN_INTERVAL = 10000;
-const MAX_PAIRS = 500;
+const SCAN_INTERVAL = 30000;
+const MAX_PAIRS = 150;
 const CONFIDENCE_THRESHOLD = 60;
 
 // ─── Coinglass API ───
@@ -72,7 +71,20 @@ async function fetchBinanceCandles(symbol, interval, limit = 100) {
   }
 }
 
-// ─── ⚠️ PERBAIKAN: Fungsi Coinglass telah dikembalikan ⚠️ ───
+// ─── Ambil data order book dari Binance (untuk Order Flow) ───
+async function fetchOrderBook(symbol, limit = 10) {
+  try {
+    const { data } = await axios.get(
+      `https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=${limit}`,
+      axiosConfig
+    );
+    return data;
+  } catch (err) {
+    throw new Error(`Order book error: ${err.message}`);
+  }
+}
+
+// ─── Ambil data derivatif dari Coinglass ───
 async function fetchCoinglassData(symbol) {
   const cleanSymbol = symbol.replace('USDT', '');
   const result = {
@@ -90,7 +102,6 @@ async function fetchCoinglassData(symbol) {
   }
 
   try {
-    // 1. Open Interest
     const oiRes = await axios.get(
       `${COINGLASS_BASE_URL}/futures/openInterest?symbol=${cleanSymbol}&type=ALL`,
       coinglassConfig
@@ -99,7 +110,6 @@ async function fetchCoinglassData(symbol) {
       result.openInterest = parseFloat(oiRes.data.data[0].openInterestValue) || 0;
     }
 
-    // 2. CVD (Cumulative Volume Delta)
     const cvdRes = await axios.get(
       `${COINGLASS_BASE_URL}/futures/cvd?symbol=${cleanSymbol}&interval=1h`,
       coinglassConfig
@@ -108,7 +118,6 @@ async function fetchCoinglassData(symbol) {
       result.cvd = parseFloat(cvdRes.data.data[0].cvd) || 0;
     }
 
-    // 3. Liquidation Heatmap
     const liqRes = await axios.get(
       `${COINGLASS_BASE_URL}/futures/liquidation?symbol=${cleanSymbol}&interval=1h&type=ALL`,
       coinglassConfig
@@ -118,23 +127,12 @@ async function fetchCoinglassData(symbol) {
     }
   } catch (err) {
     console.warn(`⚠️ Coinglass API error untuk ${symbol}:`, err.message);
-    // Fallback dummy data
     result.openInterest = Math.floor(Math.random() * 1000000);
     result.cvd = Math.floor(Math.random() * 500000);
     result.liquidationHeatmap = Math.floor(Math.random() * 200000);
   }
 
   return result;
-}
-
-// ─── Identifikasi Level Kunci (Support & Resistance) ───
-function identifyKeyLevels(candles) {
-  const highs = candles.slice(-30).map(c => parseFloat(c[2]));
-  const lows = candles.slice(-30).map(c => parseFloat(c[3]));
-  const resistance = Math.max(...highs);
-  const support = Math.min(...lows);
-
-  return { resistance, support };
 }
 
 // ─── Analisis Price Action ───
@@ -166,7 +164,12 @@ function analyzePriceAction(candles) {
   const volumeRatio = volume / (avgVolume || 1);
   const isVolumeSpike = volumeRatio > 2.0;
 
-  const { resistance, support } = identifyKeyLevels(candles);
+  const highs = candles.slice(-30).map(c => parseFloat(c[2]));
+  const lows = candles.slice(-30).map(c => parseFloat(c[3]));
+  const resistance = highs.length > 0 ? Math.max(...highs) : high;
+  const support = lows.length > 0 ? Math.min(...lows) : low;
+  const nearResistance = (resistance - close) / close < 0.015;
+  const nearSupport = (close - support) / close < 0.015;
 
   let score = 0;
   let signals = [];
@@ -207,27 +210,18 @@ function analyzePriceAction(candles) {
   }
 
   // 6. Level Support/Resistance
-  const nearResistance = (resistance - close) / close < 0.015;
-  const nearSupport = (close - support) / close < 0.015;
-
   if (nearSupport && close > open) {
-    score += 10; signals.push('Near Support (Bullish)');
+    score += 10; signals.push('Near Support');
   } else if (nearResistance && close < open) {
-    score -= 10; signals.push('Near Resistance (Bearish)');
+    score -= 10; signals.push('Near Resistance');
   }
 
   return { score, signals: signals.slice(0, 6), trend: score > 10 ? 'BULLISH' : score < -10 ? 'BEARISH' : 'SIDEWAYS', volumeRatio, support, resistance };
 }
 
-// ─── Fungsi Utama Analisis (Full) ───
+// ─── Analisis Utama (Full) ───
 async function analyzeFull(symbol, timeframe) {
-  const intervalMap = {
-    '5m': '5m',
-    '15m': '15m',
-    '1h': '1h',
-    '4h': '4h',
-    '1d': '1d'
-  };
+  const intervalMap = { '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1d' };
   const interval = intervalMap[timeframe] || '1h';
 
   try {
@@ -239,11 +233,9 @@ async function analyzeFull(symbol, timeframe) {
 
     let finalScore = pa.score;
 
-    // Bonus untuk konfirmasi level
     if (pa.trend === 'BULLISH' && pa.support > 0) finalScore += 5;
     if (pa.trend === 'BEARISH' && pa.resistance > 0) finalScore += 5;
 
-    // Derivatif (Coinglass)
     if (coinglassData.openInterest > 0 && finalScore > 0) finalScore += 5;
     if (coinglassData.cvd > 0 && finalScore > 0) finalScore += 5;
     if (coinglassData.liquidationHeatmap > 0 && finalScore > 0) finalScore += 5;
@@ -281,9 +273,7 @@ async function analyzeFull(symbol, timeframe) {
       confidence = 0;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    //  LEVEL-BASED SL & TP (Area Invalidasi & Likuiditas)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ─── Level-Based SL & TP ───
     const price = parseFloat(candles[candles.length - 1][4]);
     const atr = (parseFloat(candles[candles.length - 1][2]) - parseFloat(candles[candles.length - 1][3])) * 0.5;
     const tickSize = 0.00001;
@@ -294,15 +284,11 @@ async function analyzeFull(symbol, timeframe) {
     let riskRewardRatio = 0;
 
     if (signal === 'LONG') {
-      // Area Invalidasi (SL) : Support Terdekat - Buffer
       const invalidationLevel = pa.support > 0 ? pa.support : price - atr * 1.5;
       stopLoss = invalidationLevel - (tickSize * 2);
-
-      // Area Likuiditas (TP) : Resistance Terdekat - Buffer
       const liquidityLevel = pa.resistance > 0 ? pa.resistance : price + atr * 2.5;
       takeProfit1 = liquidityLevel - (tickSize * 2);
 
-      // Pastikan SL < Entry < TP
       if (stopLoss >= entry) stopLoss = entry - atr * 0.5;
       if (takeProfit1 <= entry) takeProfit1 = entry + atr * 2.0;
 
@@ -310,7 +296,6 @@ async function analyzeFull(symbol, timeframe) {
       const reward = takeProfit1 - entry;
       riskRewardRatio = reward / risk;
 
-      // Jika RR < 2, coba level resistance yang lebih tinggi
       if (riskRewardRatio < 2 && pa.resistance > 0) {
         const highs = candles.slice(-50).map(c => parseFloat(c[2]));
         highs.sort((a, b) => b - a);
@@ -323,15 +308,11 @@ async function analyzeFull(symbol, timeframe) {
         }
       }
     } else if (signal === 'SHORT') {
-      // Area Invalidasi (SL) : Resistance Terdekat + Buffer
       const invalidationLevel = pa.resistance > 0 ? pa.resistance : price + atr * 1.5;
       stopLoss = invalidationLevel + (tickSize * 2);
-
-      // Area Likuiditas (TP) : Support Terdekat + Buffer
       const liquidityLevel = pa.support > 0 ? pa.support : price - atr * 2.5;
       takeProfit1 = liquidityLevel + (tickSize * 2);
 
-      // Pastikan Entry > SL > TP
       if (stopLoss <= entry) stopLoss = entry + atr * 0.5;
       if (takeProfit1 >= entry) takeProfit1 = entry - atr * 2.0;
 
@@ -339,7 +320,6 @@ async function analyzeFull(symbol, timeframe) {
       const reward = entry - takeProfit1;
       riskRewardRatio = reward / risk;
 
-      // Jika RR < 2, coba level support yang lebih rendah
       if (riskRewardRatio < 2 && pa.support > 0) {
         const lows = candles.slice(-50).map(c => parseFloat(c[3]));
         lows.sort((a, b) => a - b);
@@ -353,13 +333,12 @@ async function analyzeFull(symbol, timeframe) {
       }
     }
 
-    // Final validation: Pastikan RR ≥ 2
     if (signal !== 'WAIT' && riskRewardRatio < 2) {
       signal = 'WAIT';
       confidence = 0;
     }
 
-    console.log(`📊 [${symbol}] TF: ${timeframe} | Score: ${finalScore.toFixed(1)} | Signal: ${signal} | Conf: ${confidence} | RR: ${riskRewardRatio.toFixed(2)}:1 | SL: ${stopLoss.toFixed(8)} | TP: ${takeProfit1.toFixed(8)}`);
+    console.log(`📊 [${symbol}] TF: ${timeframe} | Score: ${finalScore.toFixed(1)} | Signal: ${signal} | Conf: ${confidence} | RR: ${riskRewardRatio.toFixed(2)}:1`);
 
     return {
       symbol,
@@ -425,14 +404,13 @@ async function scanAllPairs(timeframe = '1h') {
   console.log(`✅ Scan #${scanCount} (${timeframe}) selesai. Sinyal: ${scanResults.length}`);
 }
 
-// ─── Endpoint Scan ───
+// ─── API Endpoints ───
 app.post('/api/v1/scan', async (req, res) => {
   const { timeframe = '1h' } = req.body;
   await scanAllPairs(timeframe);
   res.json({ success: true, message: `Scan completed for ${timeframe}` });
 });
 
-// ─── Endpoint Sinyal ───
 app.get('/api/v1/signals', (req, res) => {
   res.json({
     success: true,
@@ -443,7 +421,6 @@ app.get('/api/v1/signals', (req, res) => {
   });
 });
 
-// ─── Endpoint Detail Sinyal ───
 app.get('/api/v1/signal/:symbol', async (req, res) => {
   const symbol = req.params.symbol;
   const timeframe = req.query.timeframe || '1h';
@@ -467,6 +444,44 @@ app.get('/api/v1/signal/:symbol', async (req, res) => {
   }
 });
 
+// ─── Endpoint untuk Order Book (Order Flow) ───
+app.get('/api/v1/orderbook/:symbol', async (req, res) => {
+  const symbol = req.params.symbol;
+  const limit = parseInt(req.query.limit) || 10;
+  try {
+    const orderBook = await fetchOrderBook(symbol, limit);
+    res.json({ success: true, orderBook });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Endpoint untuk Derivatives (Coinglass) ───
+app.get('/api/v1/derivatives/:symbol', async (req, res) => {
+  const symbol = req.params.symbol;
+  try {
+    const data = await fetchCoinglassData(symbol);
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Endpoint untuk Risk Dashboard (simulasi) ───
+app.get('/api/v1/risk', (req, res) => {
+  // Dummy data untuk risk dashboard
+  res.json({
+    success: true,
+    data: {
+      dailyPnl: 1250.50,
+      exposure: 0.75,
+      maxDrawdown: 0.12,
+      winRate: 0.68,
+      positionCorrelation: 0.32
+    }
+  });
+});
+
 // ─── Debug ───
 app.get('/debug/fapi', async (req, res) => {
   try {
@@ -479,6 +494,6 @@ app.get('/debug/fapi', async (req, res) => {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🚀 Futures Agent V21 (Level-Based RR≥2 - FIXED) running on port ${PORT}`);
+  console.log(`🚀 Futures Agent V22 (5 Monitors) running on port ${PORT}`);
   setTimeout(() => scanAllPairs('1h'), 2000);
 });
