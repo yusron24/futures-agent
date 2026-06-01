@@ -9,491 +9,188 @@ app.use(cors());
 app.use(express.json());
 
 const cache = new NodeCache({ stdTTL: 60 });
-const detailCache = new NodeCache({ stdTTL: 60 });
-const SCAN_INTERVAL = 30000;
-const MAX_PAIRS = 150;
-const CONFIDENCE_THRESHOLD = 60;
-
-// ─── Coinglass API ───
-const COINGLASS_API_KEY = process.env.COINGLASS_API_KEY || '';
-const COINGLASS_BASE_URL = 'https://open-api.coinglass.com/api/pro/v1';
-
-// ─── Axios Config ───
-const axiosConfig = {
-  headers: { 'User-Agent': 'Mozilla/5.0' },
-  timeout: 15000
-};
-
-const coinglassConfig = {
-  headers: {
-    'api-key': COINGLASS_API_KEY,
-    'Content-Type': 'application/json'
-  },
-  timeout: 10000
-};
+const SCAN_INTERVAL = 60000; // 1 menit (karena analisis 500 candle + AI)
+const MAX_PAIRS = 30;
+const CONFIDENCE_THRESHOLD = 90;
+const AI_API_URL = process.env.AI_API_URL || 'https://ai.dinoiki.com/v1/chat/completions';
+const AI_API_KEY = process.env.AI_API_KEY || 'sk-284100b0920d81e0b5a5c8f6fca7316f2a965a6055f89ba7';
 
 let scanResults = [];
 let lastScanTime = null;
 let isScanning = false;
 let scanCount = 0;
 
-// ─── Helper: Dapatkan pasangan Futures dari Binance ───
-async function getFuturesSymbols() {
-  const cacheKey = 'futures_symbols';
+// ─── 1. Ambil 30 pair dengan volume tertinggi ───
+async function getTopVolumeSymbols() {
+  const cacheKey = 'top_volume_symbols';
   const cached = cache.get(cacheKey);
   if (cached) return cached;
-
   try {
-    const { data: tickers } = await axios.get('https://fapi.binance.com/fapi/v1/ticker/24hr', axiosConfig);
-    const usdtTickers = tickers
-      .filter(t => t.symbol.endsWith('USDT'))
-      .sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+    const { data: tickers } = await axios.get('https://fapi.binance.com/fapi/v1/ticker/24hr');
+    const usdtTickers = tickers.filter(t => t.symbol.endsWith('USDT'));
+    usdtTickers.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
     const symbols = usdtTickers.slice(0, MAX_PAIRS).map(t => t.symbol);
-    console.log(`✅ Mengambil ${symbols.length} pasangan dari Binance Futures`);
     cache.set(cacheKey, symbols, 3600);
     return symbols;
-  } catch (err) {
-    console.error('❌ Gagal mengambil data futures:', err.message);
-    return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
-  }
+  } catch { return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']; }
 }
 
-// ─── Ambil data klines dari Binance ───
-async function fetchBinanceCandles(symbol, interval, limit = 100) {
+// ─── 2. Ambil 500 candle 1h ───
+async function fetchCandles(symbol) {
   try {
-    const { data } = await axios.get(
-      `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
-      axiosConfig
-    );
+    const { data } = await axios.get(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=500`);
     return data;
-  } catch (err) {
-    throw new Error(`Binance klines error: ${err.message}`);
-  }
+  } catch { return null; }
 }
 
-// ─── Ambil data order book dari Binance (untuk Order Flow) ───
-async function fetchOrderBook(symbol, limit = 10) {
-  try {
-    const { data } = await axios.get(
-      `https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=${limit}`,
-      axiosConfig
-    );
-    return data;
-  } catch (err) {
-    throw new Error(`Order book error: ${err.message}`);
-  }
-}
-
-// ─── Ambil data derivatif dari Coinglass ───
-async function fetchCoinglassData(symbol) {
-  const cleanSymbol = symbol.replace('USDT', '');
-  const result = {
-    openInterest: 0,
-    cvd: 0,
-    liquidationHeatmap: 0
-  };
-
-  if (!COINGLASS_API_KEY) {
-    return {
-      openInterest: Math.floor(Math.random() * 1000000),
-      cvd: Math.floor(Math.random() * 500000),
-      liquidationHeatmap: Math.floor(Math.random() * 200000)
-    };
-  }
-
-  try {
-    const oiRes = await axios.get(
-      `${COINGLASS_BASE_URL}/futures/openInterest?symbol=${cleanSymbol}&type=ALL`,
-      coinglassConfig
-    );
-    if (oiRes.data && oiRes.data.data && oiRes.data.data.length) {
-      result.openInterest = parseFloat(oiRes.data.data[0].openInterestValue) || 0;
-    }
-
-    const cvdRes = await axios.get(
-      `${COINGLASS_BASE_URL}/futures/cvd?symbol=${cleanSymbol}&interval=1h`,
-      coinglassConfig
-    );
-    if (cvdRes.data && cvdRes.data.data && cvdRes.data.data.length) {
-      result.cvd = parseFloat(cvdRes.data.data[0].cvd) || 0;
-    }
-
-    const liqRes = await axios.get(
-      `${COINGLASS_BASE_URL}/futures/liquidation?symbol=${cleanSymbol}&interval=1h&type=ALL`,
-      coinglassConfig
-    );
-    if (liqRes.data && liqRes.data.data && liqRes.data.data.length) {
-      result.liquidationHeatmap = parseFloat(liqRes.data.data[0].value) || 0;
-    }
-  } catch (err) {
-    console.warn(`⚠️ Coinglass API error untuk ${symbol}:`, err.message);
-    result.openInterest = Math.floor(Math.random() * 1000000);
-    result.cvd = Math.floor(Math.random() * 500000);
-    result.liquidationHeatmap = Math.floor(Math.random() * 200000);
-  }
-
-  return result;
-}
-
-// ─── Analisis Price Action ───
+// ─── 3. Analisis Price Action ───
 function analyzePriceAction(candles) {
-  if (!candles || candles.length < 5) return { score: 0, signals: [], trend: 'SIDEWAYS', volumeRatio: 0, support: 0, resistance: 0 };
-
+  if (!candles || candles.length < 500) return null;
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2];
-  const prev2 = candles[candles.length - 3] || prev;
-
-  const close = parseFloat(last[4]);
-  const open = parseFloat(last[1]);
-  const high = parseFloat(last[2]);
-  const low = parseFloat(last[3]);
-  const volume = parseFloat(last[5]);
-
-  const prevClose = parseFloat(prev[4]);
-  const prevHigh = parseFloat(prev[2]);
-  const prevLow = parseFloat(prev[3]);
-
-  const body = Math.abs(close - open);
-  const range = high - low;
-  const bodyRatio = body / (range || 0.001);
-  const upperWick = high - Math.max(open, close);
-  const lowerWick = Math.min(open, close) - low;
-
+  const close = parseFloat(last[4]), open = parseFloat(last[1]), high = parseFloat(last[2]), low = parseFloat(last[3]), vol = parseFloat(last[5]);
+  const body = Math.abs(close - open), range = high - low;
+  const bodyRatio = range > 0 ? body / range : 0;
+  const upperWick = high - Math.max(open, close), lowerWick = Math.min(open, close) - low;
+  
+  // Support / Resistance dari 500 candle
+  const highs = candles.map(c => parseFloat(c[2]));
+  const lows = candles.map(c => parseFloat(c[3]));
+  const resistance = Math.max(...highs);
+  const support = Math.min(...lows);
+  
+  // Volume
   const volumes = candles.map(c => parseFloat(c[5]));
   const avgVolume = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
-  const volumeRatio = volume / (avgVolume || 1);
-  const isVolumeSpike = volumeRatio > 2.0;
-
-  const highs = candles.slice(-30).map(c => parseFloat(c[2]));
-  const lows = candles.slice(-30).map(c => parseFloat(c[3]));
-  const resistance = highs.length > 0 ? Math.max(...highs) : high;
-  const support = lows.length > 0 ? Math.min(...lows) : low;
-  const nearResistance = (resistance - close) / close < 0.015;
-  const nearSupport = (close - support) / close < 0.015;
-
-  let score = 0;
-  let signals = [];
-
-  // 1. Bullish / Bearish Engulfing
-  if (open > prevClose && close > prevHigh && body > prevClose * 0.02) {
-    score += 15; signals.push('Bullish Engulfing');
-  } else if (open < prevClose && close < prevLow && body > prevClose * 0.02) {
-    score -= 15; signals.push('Bearish Engulfing');
-  }
-
-  // 2. Pin Bar (Hammer / Shooting Star)
-  if (lowerWick > body * 2.5 && lowerWick > range * 0.3 && close > open) {
-    score += 12; signals.push('Hammer');
-  } else if (upperWick > body * 2.5 && upperWick > range * 0.3 && close < open) {
-    score -= 12; signals.push('Shooting Star');
-  }
-
-  // 3. Doji
-  if (body < range * 0.15) {
-    if (close > open) { score += 5; signals.push('Doji Bullish'); }
-    else { score -= 5; signals.push('Doji Bearish'); }
-  }
-
-  // 4. Marubozu
-  if (body > range * 0.85) {
-    if (close > open) { score += 10; signals.push('Bullish Marubozu'); }
-    else { score -= 10; signals.push('Bearish Marubozu'); }
-  }
-
-  // 5. Volume Spike
-  if (isVolumeSpike) {
-    if (close > open) {
-      score += 20; signals.push('Volume Spike Bullish');
-    } else {
-      score -= 20; signals.push('Volume Spike Bearish');
-    }
-  }
-
-  // 6. Level Support/Resistance
-  if (nearSupport && close > open) {
-    score += 10; signals.push('Near Support');
-  } else if (nearResistance && close < open) {
-    score -= 10; signals.push('Near Resistance');
-  }
-
-  return { score, signals: signals.slice(0, 6), trend: score > 10 ? 'BULLISH' : score < -10 ? 'BEARISH' : 'SIDEWAYS', volumeRatio, support, resistance };
+  const volRatio = avgVolume > 0 ? vol / avgVolume : 1;
+  
+  // Pola Candlestick
+  let patterns = [];
+  if (open > parseFloat(prev[4]) && close > parseFloat(prev[2]) && body > parseFloat(prev[4]) * 0.02)
+    patterns.push('Bullish Engulfing');
+  if (open < parseFloat(prev[4]) && close < parseFloat(prev[3]) && body > parseFloat(prev[4]) * 0.02)
+    patterns.push('Bearish Engulfing');
+  if (lowerWick > body * 2.5 && lowerWick > range * 0.3 && close > open)
+    patterns.push('Hammer');
+  if (upperWick > body * 2.5 && upperWick > range * 0.3 && close < open)
+    patterns.push('Shooting Star');
+  if (body < range * 0.15)
+    patterns.push(close > open ? 'Doji Bullish' : 'Doji Bearish');
+  if (body > range * 0.85)
+    patterns.push(close > open ? 'Marubozu Bullish' : 'Marubozu Bearish');
+  
+  return { close, high, low, open, support, resistance, volRatio, patterns, bodyRatio, upperWick, lowerWick };
 }
 
-// ─── Analisis Utama (Full) ───
-async function analyzeFull(symbol, timeframe) {
-  const intervalMap = { '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1d' };
-  const interval = intervalMap[timeframe] || '1h';
+// ─── 4. Analisis AI dengan Claude Sonnet 4-6 ───
+async function analyzeWithAgent(symbol) {
+  const candles = await fetchCandles(symbol);
+  if (!candles) return null;
+  
+  const [oi, funding, lsRatio, ticker] = await Promise.all([
+    axios.get(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`),
+    axios.get(`https://fapi.binance.com/fapi/v1/fundingInfo?symbol=${symbol}`),
+    axios.get(`https://fapi.binance.com/fapi/v1/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=1`),
+    axios.get(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${symbol}`)
+  ]);
+  
+  const pa = analyzePriceAction(candles);
+  if (!pa) return null;
+  
+  const oiValue = parseFloat(oi.data.sumOpenInterestValue || 0);
+  const fundingRate = parseFloat(funding.data[0]?.fundingRate || 0);
+  const ls = parseFloat(lsRatio.data[0]?.longShortRatio || 1);
+  const price = parseFloat(ticker.data.lastPrice);
+  
+  const systemPrompt = `
+Anda adalah AI Agent trading futures crypto profesional. Tugas Anda adalah menganalisis data pasar dan memberikan sinyal trading (LONG/SHORT/WAIT). 
+Anda harus mengembalikan respons Anda sebagai objek JSON mentah. 
+JSON harus berisi: "action" (LONG/SHORT/WAIT), "entry" (harga saat ini), "stopLoss" (level invalidasi), "takeProfit" (level likuiditas), "confidence" (0-100), "reasoning" (penjelasan singkat), dan "rr" (rasio risk:reward). 
+Semua level harus presisi. Confidence harus >= 90. RR harus >= 2. Jangan gunakan format markdown.
+`;
+
+  const userMessage = `
+Data pasar untuk ${symbol} (500 candle 1h):
+- Harga saat ini: ${price}
+- Support terdekat: ${pa.support.toFixed(2)}
+- Resistance terdekat: ${pa.resistance.toFixed(2)}
+- Body Ratio: ${pa.bodyRatio.toFixed(2)}
+- Upper Wick: ${pa.upperWick.toFixed(4)}, Lower Wick: ${pa.lowerWick.toFixed(4)}
+- Volume Ratio: ${pa.volRatio.toFixed(2)}
+- Pola terdeteksi: ${pa.patterns.join(', ') || 'Tidak ada'}
+- Open Interest: ${oiValue.toFixed(0)}
+- Funding Rate: ${(fundingRate * 100).toFixed(4)}%
+- Long/Short Ratio: ${ls.toFixed(2)}
+`;
 
   try {
-    const candles = await fetchBinanceCandles(symbol, interval, 100);
-    if (!candles || candles.length < 20) return null;
+    if (!AI_API_KEY) throw new Error('AI_API_KEY tidak ditemukan');
 
-    const pa = analyzePriceAction(candles);
-    const coinglassData = await fetchCoinglassData(symbol);
-
-    let finalScore = pa.score;
-
-    if (pa.trend === 'BULLISH' && pa.support > 0) finalScore += 5;
-    if (pa.trend === 'BEARISH' && pa.resistance > 0) finalScore += 5;
-
-    if (coinglassData.openInterest > 0 && finalScore > 0) finalScore += 5;
-    if (coinglassData.cvd > 0 && finalScore > 0) finalScore += 5;
-    if (coinglassData.liquidationHeatmap > 0 && finalScore > 0) finalScore += 5;
-
-    let binanceOI = 0, funding = 0, lsRatio = 1;
-    try {
-      const [oiRes, fundingRes, lsRes] = await Promise.all([
-        axios.get(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`, axiosConfig),
-        axios.get(`https://fapi.binance.com/fapi/v1/fundingInfo?symbol=${symbol}`, axiosConfig),
-        axios.get(`https://fapi.binance.com/fapi/v1/globalLongShortAccountRatio?symbol=${symbol}&period=${interval}&limit=1`, axiosConfig)
-      ]);
-      binanceOI = parseFloat(oiRes.data.sumOpenInterestValue || 0);
-      funding = parseFloat(fundingRes.data[0]?.fundingRate || 0);
-      lsRatio = parseFloat(lsRes.data[0]?.longShortRatio || 1);
-    } catch (err) {}
-
-    if (binanceOI > 0 && finalScore > 0) finalScore += 5;
-    if (funding < -0.001 && finalScore > 0) finalScore += 8;
-    if (lsRatio > 1.5 && finalScore < 0) finalScore -= 8;
-    if (lsRatio < 0.6 && finalScore > 0) finalScore += 8;
-
-    let signal = 'WAIT';
-    let confidence = 0;
-
-    if (finalScore >= 15) {
-      signal = 'LONG';
-      confidence = Math.min(99, 70 + finalScore * 0.5);
-    } else if (finalScore <= -15) {
-      signal = 'SHORT';
-      confidence = Math.min(99, 70 + Math.abs(finalScore) * 0.5);
-    }
-
-    if (confidence < CONFIDENCE_THRESHOLD) {
-      signal = 'WAIT';
-      confidence = 0;
-    }
-
-    // ─── Level-Based SL & TP ───
-    const price = parseFloat(candles[candles.length - 1][4]);
-    const atr = (parseFloat(candles[candles.length - 1][2]) - parseFloat(candles[candles.length - 1][3])) * 0.5;
-    const tickSize = 0.00001;
-
-    let entry = price;
-    let stopLoss = 0;
-    let takeProfit1 = 0;
-    let riskRewardRatio = 0;
-
-    if (signal === 'LONG') {
-      const invalidationLevel = pa.support > 0 ? pa.support : price - atr * 1.5;
-      stopLoss = invalidationLevel - (tickSize * 2);
-      const liquidityLevel = pa.resistance > 0 ? pa.resistance : price + atr * 2.5;
-      takeProfit1 = liquidityLevel - (tickSize * 2);
-
-      if (stopLoss >= entry) stopLoss = entry - atr * 0.5;
-      if (takeProfit1 <= entry) takeProfit1 = entry + atr * 2.0;
-
-      const risk = entry - stopLoss;
-      const reward = takeProfit1 - entry;
-      riskRewardRatio = reward / risk;
-
-      if (riskRewardRatio < 2 && pa.resistance > 0) {
-        const highs = candles.slice(-50).map(c => parseFloat(c[2]));
-        highs.sort((a, b) => b - a);
-        const secondResistance = highs.length > 1 ? highs[1] : pa.resistance + atr * 2;
-        const newTP = secondResistance - (tickSize * 2);
-        if (newTP > entry + risk * 2) {
-          takeProfit1 = newTP;
-          const newReward = takeProfit1 - entry;
-          riskRewardRatio = newReward / risk;
-        }
-      }
-    } else if (signal === 'SHORT') {
-      const invalidationLevel = pa.resistance > 0 ? pa.resistance : price + atr * 1.5;
-      stopLoss = invalidationLevel + (tickSize * 2);
-      const liquidityLevel = pa.support > 0 ? pa.support : price - atr * 2.5;
-      takeProfit1 = liquidityLevel + (tickSize * 2);
-
-      if (stopLoss <= entry) stopLoss = entry + atr * 0.5;
-      if (takeProfit1 >= entry) takeProfit1 = entry - atr * 2.0;
-
-      const risk = stopLoss - entry;
-      const reward = entry - takeProfit1;
-      riskRewardRatio = reward / risk;
-
-      if (riskRewardRatio < 2 && pa.support > 0) {
-        const lows = candles.slice(-50).map(c => parseFloat(c[3]));
-        lows.sort((a, b) => a - b);
-        const secondSupport = lows.length > 1 ? lows[1] : pa.support - atr * 2;
-        const newTP = secondSupport + (tickSize * 2);
-        if (newTP < entry - risk * 2) {
-          takeProfit1 = newTP;
-          const newReward = entry - takeProfit1;
-          riskRewardRatio = newReward / risk;
-        }
-      }
-    }
-
-    if (signal !== 'WAIT' && riskRewardRatio < 2) {
-      signal = 'WAIT';
-      confidence = 0;
-    }
-
-    console.log(`📊 [${symbol}] TF: ${timeframe} | Score: ${finalScore.toFixed(1)} | Signal: ${signal} | Conf: ${confidence} | RR: ${riskRewardRatio.toFixed(2)}:1`);
-
-    return {
-      symbol,
-      timeframe,
-      price: entry,
-      signal,
-      confidence: Math.round(confidence),
-      score: Math.round(finalScore),
-      signals: pa.signals.slice(0, 6),
-      entry: entry.toFixed(8),
-      stopLoss: stopLoss.toFixed(8),
-      takeProfit1: takeProfit1.toFixed(8),
-      volumeRatio: pa.volumeRatio.toFixed(2),
-      trend: finalScore > 0 ? 'BULLISH' : 'BEARISH',
-      strength: Math.abs(finalScore) > 30 ? 'STRONG' : 'MODERATE',
-      derivatives: {
-        oi: coinglassData.openInterest.toFixed(0),
-        cvd: coinglassData.cvd.toFixed(0),
-        liquidation: coinglassData.liquidationHeatmap.toFixed(0),
-        funding: (funding * 100).toFixed(3) + '%',
-        lsRatio: lsRatio.toFixed(2)
-      }
+    const requestData = {
+      model: 'claude-sonnet-4-6',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage }
+      ],
+      max_tokens: 500,
+      temperature: 0.1
     };
-  } catch (err) {
-    console.error(`❌ Error analyzing ${symbol}:`, err.message);
-    return null;
+
+    const res = await axios.post(AI_API_URL, requestData, {
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AI_API_KEY}` },
+      timeout: 60000
+    });
+
+    const content = res.data.choices[0].message.content;
+    const cleaned = content.replace(/```json|```/g, '').trim();
+    const decision = JSON.parse(cleaned);
+    
+    if (decision.action !== 'WAIT') {
+      const risk = Math.abs(decision.entry - decision.stopLoss);
+      const reward = Math.abs(decision.takeProfit - decision.entry);
+      if (risk > 0 && reward / risk < 2) decision.action = 'WAIT';
+      if (decision.confidence < 90) decision.action = 'WAIT';
+    }
+    return decision;
+  } catch (error) {
+    console.error('❌ Error AI API:', error.message);
+    return { action: 'WAIT', confidence: 0 };
   }
 }
 
-// ─── Scheduler ───
-async function scanAllPairs(timeframe = '1h') {
+// ─── 5. Scheduler ───
+setInterval(async () => {
   if (isScanning) return;
   isScanning = true;
   scanCount++;
-
-  console.log(`\n🔍 === START SCAN #${scanCount} (${timeframe}) ===`);
-  const symbols = await getFuturesSymbols();
-  console.log(`🔍 Scanning ${symbols.length} pasangan...`);
-
+  console.log(`\n🤖 SCAN #${scanCount}`);
+  const symbols = await getTopVolumeSymbols();
   const results = [];
-  const batchSize = 50;
-  for (let i = 0; i < symbols.length; i += batchSize) {
-    const batch = symbols.slice(i, i + batchSize);
-    const promises = batch.map(async (s) => {
-      const analysis = await analyzeFull(s, timeframe);
-      if (analysis) {
-        const cacheKey = `${s}_${timeframe}`;
-        detailCache.set(cacheKey, analysis, 120);
+  for (let i = 0; i < symbols.length; i += 5) {
+    const batch = symbols.slice(i, i + 5);
+    const promises = batch.map(async s => {
+      const decision = await analyzeWithAgent(s);
+      if (decision && decision.action !== 'WAIT') {
+        return { symbol: s, signal: decision.action, entry: decision.entry, stopLoss: decision.stopLoss, takeProfit: decision.takeProfit, confidence: decision.confidence, reasoning: decision.reasoning };
       }
-      return analysis;
+      return null;
     });
     const batchResults = await Promise.allSettled(promises);
-    batchResults.forEach(r => {
-      if (r.status === 'fulfilled' && r.value) results.push(r.value);
-    });
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    batchResults.forEach(r => { if (r.status === 'fulfilled' && r.value) results.push(r.value); });
+    await new Promise(resolve => setTimeout(resolve, 2000));
   }
-
-  scanResults = results.filter(r => r.signal !== 'WAIT');
+  scanResults = results;
   lastScanTime = new Date();
   isScanning = false;
+  console.log(`✅ Selesai. Sinyal: ${scanResults.length}`);
+}, SCAN_INTERVAL);
 
-  console.log(`✅ Scan #${scanCount} (${timeframe}) selesai. Sinyal: ${scanResults.length}`);
-}
-
-// ─── API Endpoints ───
-app.post('/api/v1/scan', async (req, res) => {
-  const { timeframe = '1h' } = req.body;
-  await scanAllPairs(timeframe);
-  res.json({ success: true, message: `Scan completed for ${timeframe}` });
-});
-
-app.get('/api/v1/signals', (req, res) => {
-  res.json({
-    success: true,
-    signals: scanResults,
-    total: scanResults.length,
-    lastScan: lastScanTime,
-    scanning: isScanning
-  });
-});
-
+// ─── 6. API ───
+app.get('/api/v1/signals', (req, res) => res.json({ success: true, signals: scanResults, total: scanResults.length, lastScan: lastScanTime, scanning: isScanning }));
 app.get('/api/v1/signal/:symbol', async (req, res) => {
-  const symbol = req.params.symbol;
-  const timeframe = req.query.timeframe || '1h';
-  const cacheKey = `${symbol}_${timeframe}`;
-
-  const cachedAnalysis = detailCache.get(cacheKey);
-  if (cachedAnalysis) {
-    return res.json({ success: true, signal: cachedAnalysis });
-  }
-
-  try {
-    const analysis = await analyzeFull(symbol, timeframe);
-    if (!analysis) {
-      return res.status(404).json({ error: 'Data not found' });
-    }
-    detailCache.set(cacheKey, analysis, 120);
-    res.json({ success: true, signal: analysis });
-  } catch (err) {
-    console.error(`❌ Error fetching detail for ${symbol}:`, err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── Endpoint untuk Order Book (Order Flow) ───
-app.get('/api/v1/orderbook/:symbol', async (req, res) => {
-  const symbol = req.params.symbol;
-  const limit = parseInt(req.query.limit) || 10;
-  try {
-    const orderBook = await fetchOrderBook(symbol, limit);
-    res.json({ success: true, orderBook });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── Endpoint untuk Derivatives (Coinglass) ───
-app.get('/api/v1/derivatives/:symbol', async (req, res) => {
-  const symbol = req.params.symbol;
-  try {
-    const data = await fetchCoinglassData(symbol);
-    res.json({ success: true, data });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── Endpoint untuk Risk Dashboard (simulasi) ───
-app.get('/api/v1/risk', (req, res) => {
-  // Dummy data untuk risk dashboard
-  res.json({
-    success: true,
-    data: {
-      dailyPnl: 1250.50,
-      exposure: 0.75,
-      maxDrawdown: 0.12,
-      winRate: 0.68,
-      positionCorrelation: 0.32
-    }
-  });
-});
-
-// ─── Debug ───
-app.get('/debug/fapi', async (req, res) => {
-  try {
-    const response = await axios.get('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT', axiosConfig);
-    res.json({ success: true, data: response.data });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const decision = await analyzeWithAgent(req.params.symbol);
+  res.json({ success: true, signal: decision });
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`🚀 Futures Agent V22 (5 Monitors) running on port ${PORT}`);
-  setTimeout(() => scanAllPairs('1h'), 2000);
-});
+app.listen(PORT, () => console.log(`🤖 AI Agent Final running on port ${PORT}`));
