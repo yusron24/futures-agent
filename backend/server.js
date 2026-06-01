@@ -9,11 +9,13 @@ app.use(cors());
 app.use(express.json());
 
 const cache = new NodeCache({ stdTTL: 60 });
-const SCAN_INTERVAL = 60000; // 1 menit (karena analisis 500 candle + AI)
+const SCAN_INTERVAL = 60000;
 const MAX_PAIRS = 30;
 const CONFIDENCE_THRESHOLD = 90;
-const AI_API_URL = process.env.AI_API_URL || 'https://ai.dinoiki.com/v1/chat/completions';
+
+// ⚠️ Gunakan variabel environment dari Dinoiki
 const AI_API_KEY = process.env.AI_API_KEY || 'sk-284100b0920d81e0b5a5c8f6fca7316f2a965a6055f89ba7';
+const AI_API_URL = process.env.AI_API_URL || 'https://ai.dinoiki.com/v1/chat/completions';
 
 let scanResults = [];
 let lastScanTime = null;
@@ -53,18 +55,15 @@ function analyzePriceAction(candles) {
   const bodyRatio = range > 0 ? body / range : 0;
   const upperWick = high - Math.max(open, close), lowerWick = Math.min(open, close) - low;
   
-  // Support / Resistance dari 500 candle
   const highs = candles.map(c => parseFloat(c[2]));
   const lows = candles.map(c => parseFloat(c[3]));
   const resistance = Math.max(...highs);
   const support = Math.min(...lows);
   
-  // Volume
   const volumes = candles.map(c => parseFloat(c[5]));
   const avgVolume = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
   const volRatio = avgVolume > 0 ? vol / avgVolume : 1;
   
-  // Pola Candlestick
   let patterns = [];
   if (open > parseFloat(prev[4]) && close > parseFloat(prev[2]) && body > parseFloat(prev[4]) * 0.02)
     patterns.push('Bullish Engulfing');
@@ -82,7 +81,7 @@ function analyzePriceAction(candles) {
   return { close, high, low, open, support, resistance, volRatio, patterns, bodyRatio, upperWick, lowerWick };
 }
 
-// ─── 4. Analisis AI dengan Claude Sonnet 4-6 ───
+// ─── 4. Analisis AI dengan Claude Sonnet 4.6 via Dinoiki ───
 async function analyzeWithAgent(symbol) {
   const candles = await fetchCandles(symbol);
   if (!candles) return null;
@@ -102,6 +101,7 @@ async function analyzeWithAgent(symbol) {
   const ls = parseFloat(lsRatio.data[0]?.longShortRatio || 1);
   const price = parseFloat(ticker.data.lastPrice);
   
+  // ⚠️ System Prompt untuk Dinoiki (OpenAI format)
   const systemPrompt = `
 Anda adalah AI Agent trading futures crypto profesional. Tugas Anda adalah menganalisis data pasar dan memberikan sinyal trading (LONG/SHORT/WAIT). 
 Anda harus mengembalikan respons Anda sebagai objek JSON mentah. 
@@ -126,6 +126,7 @@ Data pasar untuk ${symbol} (500 candle 1h):
   try {
     if (!AI_API_KEY) throw new Error('AI_API_KEY tidak ditemukan');
 
+    // ⚠️ Format OpenAI untuk Dinoiki
     const requestData = {
       model: 'claude-sonnet-4-6',
       messages: [
@@ -137,7 +138,10 @@ Data pasar untuk ${symbol} (500 candle 1h):
     };
 
     const res = await axios.post(AI_API_URL, requestData, {
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AI_API_KEY}` },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${AI_API_KEY}`
+      },
       timeout: 60000
     });
 
@@ -153,7 +157,7 @@ Data pasar untuk ${symbol} (500 candle 1h):
     }
     return decision;
   } catch (error) {
-    console.error('❌ Error AI API:', error.message);
+    console.error('❌ Error Dinoiki API:', error.response?.data || error.message);
     return { action: 'WAIT', confidence: 0 };
   }
 }
@@ -193,4 +197,4 @@ app.get('/api/v1/signal/:symbol', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🤖 AI Agent Final running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🤖 AI Agent (Dinoiki) running on port ${PORT}`));
