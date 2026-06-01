@@ -14,7 +14,7 @@ const MAX_PAIRS = 30;
 const CONFIDENCE_THRESHOLD = 90;
 
 // ⚠️ Ambil Environment Variables. Jika gagal, aplikasi tetap jalan dengan pesan error
-const AI_API_KEY = process.env.AI_API_KEY; sk-284100b0920d81e0b5a5c8f6fca7316f2a965a6055f89ba7
+const AI_API_KEY = process.env.AI_API_KEY; 
 const AI_API_URL = process.env.AI_API_URL || 'https://ai.dinoiki.com/v1/chat/completions';
 
 // Tambahkan pengecekan API Key saat startup
