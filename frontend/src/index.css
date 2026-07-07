@@ -23,4 +23,7 @@
   .skeleton {
     @apply animate-pulse-fast bg-terminal-border/60 rounded;
   }
+  .input {
+    @apply w-full bg-terminal-bg border border-terminal-border rounded px-3 py-2 text-sm text-terminal-text focus:outline-none focus:border-terminal-accent/60;
+  }
 }

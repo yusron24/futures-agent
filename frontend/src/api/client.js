@@ -49,4 +49,14 @@ export async function getHealth() {
   return data;
 }
 
+export async function getSettings() {
+  const { data } = await client.get('/api/settings');
+  return data.settings;
+}
+
+export async function updateSettings(partial) {
+  const { data } = await client.put('/api/settings', partial);
+  return data;
+}
+
 export default client;

@@ -3,9 +3,9 @@ const coingecko = require('./coingeckoService');
 const { getTopCoins, getCoinsByCategory, sleep } = coingecko;
 const { calculateRSI, calculateMACD, calculateVolatility, toDailySeries } = require('./indicators');
 const { computeScore } = require('./scoringService');
-const { getSocialMomentum, socialConfigured } = require('./socialService');
+const { getSocialMomentum, isSocialConfigured } = require('./socialService');
+const { getSettings } = require('../db/settingsStore');
 
-const DETAILED_LIMIT = parseInt(process.env.DETAILED_COINS_LIMIT || '60', 10);
 const FETCH_DELAY_MS = parseInt(process.env.DETAILED_FETCH_DELAY_MS || '1300', 10);
 const NEW_LISTING_DAYS = 30;
 
@@ -77,7 +77,7 @@ async function fetchDetailedMetrics(quick) {
     }
 
     let social = null;
-    if (socialConfigured) {
+    if (isSocialConfigured()) {
       social = await getSocialMomentum(quick.symbol);
     }
 
@@ -150,10 +150,11 @@ function round(n, digits = 2) {
 async function runFullScreening({ category } = {}) {
   const coins = category ? await getCoinsByCategory(category) : await getTopCoins(250);
   const watchlistIds = getWatchlistCoinIds();
+  const { detailedCoinsLimit } = getSettings();
 
   const quickList = coins.map(buildQuickMetrics);
   const byHeuristic = [...quickList].sort((a, b) => b._candidateHeuristic - a._candidateHeuristic);
-  const detailedIds = new Set(byHeuristic.slice(0, DETAILED_LIMIT).map((c) => c.id));
+  const detailedIds = new Set(byHeuristic.slice(0, detailedCoinsLimit).map((c) => c.id));
   watchlistIds.forEach((id) => detailedIds.add(id));
 
   const results = [];

@@ -1,6 +1,9 @@
 const axios = require('axios');
+const { getSettings } = require('../db/settingsStore');
 
-const LUNARCRUSH_KEY = process.env.LUNARCRUSH_API_KEY || process.env.SOCIAL_API_KEY || '';
+function isSocialConfigured() {
+  return Boolean(getSettings().lunarcrushApiKey);
+}
 
 /**
  * Social momentum for a coin symbol. Returns null when no API key is
@@ -8,12 +11,13 @@ const LUNARCRUSH_KEY = process.env.LUNARCRUSH_API_KEY || process.env.SOCIAL_API_
  * per spec this metric is "skipped but still has a placeholder slot".
  */
 async function getSocialMomentum(symbol) {
-  if (!LUNARCRUSH_KEY) return null;
+  const { lunarcrushApiKey } = getSettings();
+  if (!lunarcrushApiKey) return null;
 
   try {
     const res = await axios.get('https://lunarcrush.com/api4/public/coins/list/v1', {
       params: { symbol: symbol.toUpperCase() },
-      headers: { Authorization: `Bearer ${LUNARCRUSH_KEY}` },
+      headers: { Authorization: `Bearer ${lunarcrushApiKey}` },
       timeout: 8000,
     });
     const coin = res.data?.data?.[0];
@@ -38,4 +42,4 @@ async function getSocialMomentum(symbol) {
   }
 }
 
-module.exports = { getSocialMomentum, socialConfigured: Boolean(LUNARCRUSH_KEY) };
+module.exports = { getSocialMomentum, isSocialConfigured };

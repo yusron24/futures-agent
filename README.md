@@ -44,15 +44,17 @@ Buka `http://localhost:5173` di browser.
 
 ## Konfigurasi (.env backend)
 
+`.env` hanya dipakai sebagai **nilai default awal**. Setelah backend jalan, buka halaman **Pengaturan** di `http://localhost:5173/settings` untuk mengubah API key, interval scan, threshold sinyal, dan jumlah koin detail per siklus langsung dari browser — tersimpan di SQLite dan diterapkan seketika tanpa perlu edit `.env` atau restart backend.
+
 | Variable | Keterangan |
 |---|---|
 | `PORT` | Port backend (default 5000) |
 | `COINGECKO_API_URL` | Base URL CoinGecko (default tier gratis) |
-| `COINGECKO_API_KEY` | Opsional, untuk CoinGecko Pro/Demo API key |
-| `LUNARCRUSH_API_KEY` / `SANTIMENT_API_KEY` / `SOCIAL_API_KEY` | Opsional, mengaktifkan skor momentum sosial. Tanpa key, skor sosial memakai nilai netral placeholder (tetap dihitung dalam skor total, tidak mempengaruhi ranking secara bias) |
-| `DETAILED_COINS_LIMIT` | Jumlah koin top-mover yang dihitung indikator detail (RSI/MACD/volume spike) per siklus, default 60. Dibatasi agar tidak melebihi rate limit gratis CoinGecko (~10-30 request/menit) |
-| `SCAN_INTERVAL_MINUTES` | Interval scheduler penghitungan ulang skor (default 5 menit) |
-| `SIGNAL_SCORE_THRESHOLD` | Skor minimum agar sebuah koin dicatat sebagai "sinyal" ke riwayat (default 75) |
+| `COINGECKO_API_KEY` | Opsional, untuk CoinGecko Pro/Demo API key — bisa juga diisi lewat halaman Pengaturan |
+| `LUNARCRUSH_API_KEY` / `SOCIAL_API_KEY` | Opsional, mengaktifkan skor momentum sosial. Tanpa key, skor sosial memakai nilai netral placeholder (tetap dihitung dalam skor total, tidak mempengaruhi ranking secara bias) — bisa juga diisi lewat halaman Pengaturan |
+| `DETAILED_COINS_LIMIT` | Jumlah koin top-mover yang dihitung indikator detail (RSI/MACD/volume spike) per siklus, default 60. Dibatasi agar tidak melebihi rate limit gratis CoinGecko (~10-30 request/menit) — bisa diubah lewat halaman Pengaturan |
+| `SCAN_INTERVAL_MINUTES` | Interval scheduler penghitungan ulang skor (default 5 menit) — bisa diubah lewat halaman Pengaturan |
+| `SIGNAL_SCORE_THRESHOLD` | Skor minimum agar sebuah koin dicatat sebagai "sinyal" ke riwayat (default 75) — bisa diubah lewat halaman Pengaturan |
 | `CORS_ORIGIN` | Origin frontend yang diizinkan (default `http://localhost:5173`) |
 
 ## Cara Kerja Screening
@@ -76,6 +78,8 @@ Buka `http://localhost:5173` di browser.
 | GET | `/api/signals` | Riwayat sinyal tersimpan (`limit`, `coinId`) |
 | GET | `/api/categories` | Daftar kategori/sektor koin |
 | GET | `/api/health` | Status backend & konfigurasi |
+| GET | `/api/settings` | Baca pengaturan aktif (API key, interval scan, threshold, dll) |
+| PUT | `/api/settings` | Ubah pengaturan — tersimpan di SQLite, diterapkan langsung tanpa restart |
 
 ## Catatan & Keterbatasan
 

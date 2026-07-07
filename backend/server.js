@@ -8,9 +8,11 @@ const coinsRouter = require('./routes/coins');
 const watchlistRouter = require('./routes/watchlist');
 const signalsRouter = require('./routes/signals');
 const categoriesRouter = require('./routes/categories');
-const { startScheduler, THRESHOLD } = require('./services/scheduler');
+const createSettingsRouter = require('./routes/settings');
+const { startScheduler, restartScheduler } = require('./services/scheduler');
 const { getLatestScreening } = require('./services/screeningService');
-const { socialConfigured } = require('./services/socialService');
+const { isSocialConfigured } = require('./services/socialService');
+const { getSettings } = require('./db/settingsStore');
 
 const app = express();
 const server = http.createServer(app);
@@ -23,16 +25,17 @@ app.use(express.json());
 
 app.get('/api/health', (req, res) => {
   const latest = getLatestScreening();
+  const settings = getSettings();
   res.json({
     success: true,
     status: 'ok',
     lastScreeningAt: latest.updatedAt,
     isRunning: latest.isRunning,
-    signalThreshold: THRESHOLD,
-    scanIntervalMinutes: parseInt(process.env.SCAN_INTERVAL_MINUTES || '5', 10),
-    detailedCoinsLimit: parseInt(process.env.DETAILED_COINS_LIMIT || '60', 10),
-    socialDataConfigured: socialConfigured,
-    coingeckoApiKeyConfigured: Boolean(process.env.COINGECKO_API_KEY),
+    signalThreshold: settings.signalScoreThreshold,
+    scanIntervalMinutes: settings.scanIntervalMinutes,
+    detailedCoinsLimit: settings.detailedCoinsLimit,
+    socialDataConfigured: isSocialConfigured(),
+    coingeckoApiKeyConfigured: Boolean(settings.coingeckoApiKey),
   });
 });
 
@@ -40,6 +43,7 @@ app.use('/api/coins', coinsRouter);
 app.use('/api/watchlist', watchlistRouter);
 app.use('/api/signals', signalsRouter);
 app.use('/api/categories', categoriesRouter);
+app.use('/api/settings', createSettingsRouter({ onIntervalChange: () => restartScheduler() }));
 
 app.use((req, res) => {
   res.status(404).json({ success: false, error: 'Not found' });

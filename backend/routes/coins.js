@@ -1,7 +1,7 @@
 const express = require('express');
 const coingecko = require('../services/coingeckoService');
 const { triggerScreening, getLatestScreening, runFullScreening } = require('../services/screeningService');
-const { THRESHOLD } = require('../services/scheduler');
+const { getSettings } = require('../db/settingsStore');
 
 const router = express.Router();
 
@@ -18,6 +18,7 @@ function applyFilters(coins, query) {
 router.get('/screening', async (req, res) => {
   try {
     const { category } = req.query;
+    const { signalScoreThreshold } = getSettings();
 
     if (category) {
       // Category screening is computed on demand (not part of the 5-min global cache)
@@ -26,14 +27,14 @@ router.get('/screening', async (req, res) => {
         success: true,
         updatedAt: new Date().toISOString(),
         category,
-        threshold: THRESHOLD,
+        threshold: signalScoreThreshold,
         count: coins.length,
         coins: applyFilters(coins, req.query),
       });
     }
 
     if (req.query.refresh === 'true') {
-      await triggerScreening({ threshold: THRESHOLD, force: false });
+      await triggerScreening({ threshold: signalScoreThreshold, force: false });
     }
 
     const latest = getLatestScreening();
@@ -41,7 +42,7 @@ router.get('/screening', async (req, res) => {
       success: true,
       updatedAt: latest.updatedAt,
       isRunning: latest.isRunning,
-      threshold: THRESHOLD,
+      threshold: signalScoreThreshold,
       count: latest.coins.length,
       coins: applyFilters(latest.coins, req.query),
     });

@@ -1,17 +1,56 @@
 import { useEffect, useState } from 'react';
-import { getHealth } from '../api/client';
+import { getSettings, updateSettings } from '../api/client';
+
+const EMPTY_FORM = {
+  coingeckoApiKey: '',
+  lunarcrushApiKey: '',
+  scanIntervalMinutes: 5,
+  signalScoreThreshold: 75,
+  detailedCoinsLimit: 60,
+};
 
 export default function Settings() {
-  const [health, setHealth] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState(null);
   const [notifPermission, setNotifPermission] = useState(
     'Notification' in window ? Notification.permission : 'unsupported'
   );
 
-  useEffect(() => {
-    getHealth()
-      .then(setHealth)
-      .catch(() => setHealth(null));
-  }, []);
+  const load = () => {
+    setLoading(true);
+    getSettings()
+      .then((s) =>
+        setForm({
+          coingeckoApiKey: s.coingeckoApiKey || '',
+          lunarcrushApiKey: s.lunarcrushApiKey || '',
+          scanIntervalMinutes: s.scanIntervalMinutes,
+          signalScoreThreshold: s.signalScoreThreshold,
+          detailedCoinsLimit: s.detailedCoinsLimit,
+        })
+      )
+      .catch(() => setMessage({ type: 'error', text: 'Gagal memuat pengaturan dari backend.' }))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, []);
+
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setMessage(null);
+    try {
+      await updateSettings(form);
+      setMessage({ type: 'success', text: 'Pengaturan disimpan dan langsung diterapkan (tanpa restart).' });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Gagal menyimpan pengaturan.' });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const requestNotifPermission = async () => {
     if (!('Notification' in window)) return;
@@ -19,46 +58,100 @@ export default function Settings() {
     setNotifPermission(perm);
   };
 
+  if (loading) {
+    return <div className="text-terminal-muted text-sm">Memuat pengaturan...</div>;
+  }
+
   return (
     <div className="max-w-2xl">
       <h1 className="text-xl font-bold text-terminal-text mb-1">Pengaturan</h1>
       <p className="text-xs text-terminal-muted mb-6">
-        API key untuk sumber data eksternal dikonfigurasi lewat file <code>.env</code> di server backend (bukan lewat
-        browser), agar key tidak pernah terekspos ke client. Halaman ini menampilkan status konfigurasi saat ini.
+        Diubah di sini langsung tersimpan di server (SQLite) dan diterapkan seketika — tidak perlu edit file{' '}
+        <code>.env</code> atau restart backend.
       </p>
 
-      <div className="bg-terminal-panel border border-terminal-border rounded-lg p-5 space-y-4">
-        <StatusRow
-          label="Backend"
-          ok={Boolean(health)}
-          value={health ? 'Terhubung' : 'Tidak terhubung'}
-        />
-        <StatusRow
+      <form onSubmit={handleSave} className="bg-terminal-panel border border-terminal-border rounded-lg p-5 space-y-4">
+        <Field
           label="CoinGecko API Key (opsional)"
-          ok={health?.coingeckoApiKeyConfigured}
-          value={health?.coingeckoApiKeyConfigured ? 'Dikonfigurasi' : 'Menggunakan tier gratis (tanpa key)'}
-        />
-        <StatusRow
-          label="Data Sosial (LunarCrush/Santiment)"
-          ok={health?.socialDataConfigured}
-          value={health?.socialDataConfigured ? 'Aktif' : 'Belum dikonfigurasi (skor sosial memakai nilai netral placeholder)'}
-        />
-        <StatusRow
-          label="Interval Scan Otomatis"
-          ok
-          value={health ? `${health.scanIntervalMinutes} menit` : '-'}
-        />
-        <StatusRow
-          label="Threshold Sinyal"
-          ok
-          value={health ? `Skor ≥ ${health.signalThreshold}` : '-'}
-        />
-        <StatusRow
-          label="Koin dianalisis detail / siklus"
-          ok
-          value={health ? `${health.detailedCoinsLimit} koin (dibatasi untuk menghindari rate limit CoinGecko)` : '-'}
-        />
-      </div>
+          hint="Kosongkan untuk pakai tier gratis tanpa key."
+        >
+          <input
+            type="password"
+            autoComplete="off"
+            value={form.coingeckoApiKey}
+            onChange={(e) => set({ coingeckoApiKey: e.target.value })}
+            placeholder="CG-xxxxxxxxxxxxxxxx"
+            className="input"
+          />
+        </Field>
+
+        <Field
+          label="LunarCrush API Key (opsional)"
+          hint="Mengaktifkan skor momentum sosial. Kosong = pakai nilai netral placeholder."
+        >
+          <input
+            type="password"
+            autoComplete="off"
+            value={form.lunarcrushApiKey}
+            onChange={(e) => set({ lunarcrushApiKey: e.target.value })}
+            placeholder="lc_xxxxxxxxxxxxxxxx"
+            className="input"
+          />
+        </Field>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Field label="Interval Scan (menit)">
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={form.scanIntervalMinutes}
+              onChange={(e) => set({ scanIntervalMinutes: e.target.value })}
+              className="input"
+            />
+          </Field>
+          <Field label="Threshold Sinyal (0-100)">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={form.signalScoreThreshold}
+              onChange={(e) => set({ signalScoreThreshold: e.target.value })}
+              className="input"
+            />
+          </Field>
+          <Field label="Koin Detail / Siklus">
+            <input
+              type="number"
+              min={5}
+              max={250}
+              value={form.detailedCoinsLimit}
+              onChange={(e) => set({ detailedCoinsLimit: e.target.value })}
+              className="input"
+            />
+          </Field>
+        </div>
+
+        {message && (
+          <div
+            className={`text-xs px-3 py-2 rounded border ${
+              message.type === 'success'
+                ? 'bg-terminal-green/10 border-terminal-green/30 text-terminal-green'
+                : 'bg-terminal-red/10 border-terminal-red/30 text-terminal-red'
+            }`}
+          >
+            {message.text}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="px-4 py-2 text-sm font-semibold rounded bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/40 hover:bg-terminal-accent/25 disabled:opacity-50 transition-colors"
+        >
+          {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
+        </button>
+      </form>
 
       <div className="bg-terminal-panel border border-terminal-border rounded-lg p-5 mt-4">
         <div className="text-sm font-semibold mb-2">Notifikasi Browser</div>
@@ -66,7 +159,9 @@ export default function Settings() {
           Izinkan notifikasi agar mendapat peringatan saat koin di watchlist Anda melewati skor threshold.
         </p>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-terminal-muted">Status: <b className="text-terminal-text">{notifPermission}</b></span>
+          <span className="text-xs text-terminal-muted">
+            Status: <b className="text-terminal-text">{notifPermission}</b>
+          </span>
           {notifPermission !== 'granted' && notifPermission !== 'unsupported' && (
             <button
               onClick={requestNotifPermission}
@@ -77,29 +172,16 @@ export default function Settings() {
           )}
         </div>
       </div>
-
-      <div className="bg-terminal-panel border border-terminal-border rounded-lg p-5 mt-4 text-xs text-terminal-muted leading-relaxed">
-        Untuk mengubah API key, edit file <code className="text-terminal-accent">backend/.env</code>:
-        <pre className="mt-2 p-3 bg-terminal-bg rounded border border-terminal-border overflow-x-auto">
-{`COINGECKO_API_URL=https://api.coingecko.com/api/v3
-COINGECKO_API_KEY=
-LUNARCRUSH_API_KEY=
-SANTIMENT_API_KEY=`}
-        </pre>
-        Lalu restart backend (<code>npm run dev</code>) agar perubahan berlaku.
-      </div>
     </div>
   );
 }
 
-function StatusRow({ label, ok, value }) {
+function Field({ label, hint, children }) {
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-terminal-muted">{label}</span>
-      <span className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-full ${ok ? 'bg-terminal-green' : 'bg-terminal-amber'}`} />
-        <span className="text-terminal-text">{value}</span>
-      </span>
-    </div>
+    <label className="block">
+      <span className="block text-xs text-terminal-muted mb-1">{label}</span>
+      {children}
+      {hint && <span className="block text-[10px] text-terminal-muted mt-1">{hint}</span>}
+    </label>
   );
 }
