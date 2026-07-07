@@ -4,6 +4,9 @@
   "description": "Backend API for altcoin screening / potential breakout detection dashboard",
   "main": "server.js",
   "type": "commonjs",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
@@ -18,7 +21,6 @@
   "license": "ISC",
   "dependencies": {
     "axios": "^1.7.9",
-    "better-sqlite3": "^11.8.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

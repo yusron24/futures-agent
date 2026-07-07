@@ -22,7 +22,7 @@ router.post('/', (req, res) => {
     const row = db.prepare('SELECT * FROM watchlist WHERE coin_id = ?').get(coinId);
     res.status(201).json({ success: true, watchlist: row });
   } catch (err) {
-    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+    if (err.message && err.message.includes('UNIQUE constraint failed')) {
       return res.status(409).json({ success: false, error: 'Coin already in watchlist' });
     }
     console.error('[route:POST /api/watchlist]', err.message);

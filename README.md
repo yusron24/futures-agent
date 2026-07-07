@@ -9,6 +9,10 @@ backend/    Express API, scoring engine, scheduler (cron), SQLite (watchlist + r
 frontend/   React (Vite) + Tailwind + Recharts, dashboard screening real-time
 ```
 
+## Prasyarat
+
+- **Node.js >= 22.5** (backend memakai modul bawaan `node:sqlite`, jadi tidak ada dependency native yang perlu dikompilasi — aman dijalankan di Termux/Android, Windows, macOS, atau Linux apa pun tanpa perlu toolchain build/NDK).
+
 ## Cara Menjalankan
 
 ### 1. Backend

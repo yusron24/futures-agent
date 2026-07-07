@@ -176,27 +176,33 @@ async function runFullScreening({ category } = {}) {
 function persistSignals(coins, threshold) {
   const insert = db.prepare(`
     INSERT INTO signals (coin_id, symbol, name, score, price, change_24h, volume_spike, rsi, macd_histogram, volatility, social_score, created_at)
-    VALUES (@coin_id, @symbol, @name, @score, @price, @change_24h, @volume_spike, @rsi, @macd_histogram, @volatility, @social_score, datetime('now'))
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `);
   const above = coins.filter((c) => c.score >= threshold);
-  const tx = db.transaction((rows) => {
-    for (const c of rows) {
-      insert.run({
-        coin_id: c.id,
-        symbol: c.symbol,
-        name: c.name,
-        score: c.score,
-        price: c.price,
-        change_24h: c.change24h,
-        volume_spike: c.volumeRatio,
-        rsi: c.rsi,
-        macd_histogram: c.macdHistogram,
-        volatility: c.volatilityPct,
-        social_score: c.social?.score ?? null,
-      });
+  if (above.length) {
+    db.exec('BEGIN');
+    try {
+      for (const c of above) {
+        insert.run(
+          c.id,
+          c.symbol,
+          c.name,
+          c.score,
+          c.price,
+          c.change24h,
+          c.volumeRatio,
+          c.rsi,
+          c.macdHistogram,
+          c.volatilityPct,
+          c.social?.score ?? null
+        );
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
     }
-  });
-  if (above.length) tx(above);
+  }
   return above;
 }
 

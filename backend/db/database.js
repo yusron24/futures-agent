@@ -1,12 +1,25 @@
 const path = require('path');
 const fs = require('fs');
-const Database = require('better-sqlite3');
+
+let DatabaseSync;
+try {
+  // Built into Node.js (no native compilation needed - works on every
+  // platform, including Termux/Android where node-gyp builds fail).
+  ({ DatabaseSync } = require('node:sqlite'));
+} catch (err) {
+  console.error(
+    'This app requires Node.js >= 22.5 (the built-in `node:sqlite` module). ' +
+      'Please upgrade Node.js. On Node 22.5-22.12 you may also need to run with the ' +
+      '--experimental-sqlite flag.'
+  );
+  throw err;
+}
 
 const dataDir = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
-const db = new Database(path.join(dataDir, 'screener.db'));
-db.pragma('journal_mode = WAL');
+const db = new DatabaseSync(path.join(dataDir, 'screener.db'));
+db.exec('PRAGMA journal_mode = WAL;');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS watchlist (
