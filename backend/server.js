@@ -189,68 +189,7 @@ Analisis data ini dan berikan keputusan trading terbaik. Data ini lengkap dan va
   }
 }
 
-// ─── 6. Scheduler ───
-setInterval(async () => {
-  if (isScanning) return;
-  isScanning = true;
-  scanCount++;
-  console.log(`\n🤖 SCAN #${scanCount}`);
-  const symbols = await getTopVolumeSymbols();
-  const results = [];
-
-  for (let i = 0; i < symbols.length; i += 5) {
-    const batch = symbols.slice(i, i + 5);
-    const promises = batch.map(async s => {
-      const decision = await analyzeWithAgent(s);
-      if (decision && decision.action !== 'WAIT') {
-        return {
-          symbol: s,
-          signal: decision.action,
-          entry: decision.entry,
-          stopLoss: decision.stopLoss,
-          takeProfit: decision.takeProfit,
-          confidence: decision.confidence,
-          reasoning: decision.reasoning
-        };
-      }
-      return null;
-    });
-    const batchResults = await Promise.allSettled(promises);
-    batchResults.forEach(r => { if (r.status === 'fulfilled' && r.value) results.push(r.value); });
-    await new Promise(resolve => setTimeout(resolve, 2000));
-  }
-
-  scanResults = results;
-  lastScanTime = new Date();
-  isScanning = false;
-  console.log(`✅ Selesai. Sinyal: ${scanResults.length}`);
-}, SCAN_INTERVAL);
-
-// ─── 7. API ───
-app.get('/api/v1/signals', (req, res) => res.json({ 
-  success: true, 
-  signals: scanResults, 
-  total: scanResults.length, 
-  lastScan: lastScanTime, 
-  scanning: isScanning 
-}));
-
-app.get('/api/v1/signal/:symbol', async (req, res) => {
-  const decision = await analyzeWithAgent(req.params.symbol);
-  res.json({ success: true, signal: decision });
-});
-
-// ─── 8. Start Server ───
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`🤖 AI Agent (Dinoiki + Claude 4.6) running on port ${PORT}`);
-  setTimeout(() => {
-    console.log('⏳ Memulai scan pertama...');
-    scanAllPairs();
-  }, 3000);
-});
-
-// Tambahkan fungsi scanAllPairs yang dipanggil di atas
+// ─── 6. Scan semua pair ───
 async function scanAllPairs() {
   if (isScanning) return;
   isScanning = true;
@@ -285,4 +224,45 @@ async function scanAllPairs() {
   lastScanTime = new Date();
   isScanning = false;
   console.log(`✅ Selesai. Sinyal: ${scanResults.length}`);
-          }
+}
+
+// ─── 7. API ───
+app.get('/api/v1/signals', (req, res) => res.json({ 
+  success: true, 
+  signals: scanResults, 
+  total: scanResults.length, 
+  lastScan: lastScanTime, 
+  scanning: isScanning 
+}));
+
+app.get('/api/v1/signal/:symbol', async (req, res) => {
+  const decision = await analyzeWithAgent(req.params.symbol);
+  res.json({ success: true, signal: decision });
+});
+
+// ─── 8. Start Server ───
+// Guarded so requiring this module from tests doesn't start the real
+// scheduler/server as a side effect.
+if (require.main === module) {
+  setInterval(scanAllPairs, SCAN_INTERVAL);
+
+  const PORT = process.env.PORT || 10000;
+  app.listen(PORT, () => {
+    console.log(`🤖 AI Agent (Dinoiki + Claude 4.6) running on port ${PORT}`);
+    setTimeout(() => {
+      console.log('⏳ Memulai scan pertama...');
+      scanAllPairs();
+    }, 3000);
+  });
+}
+
+module.exports = {
+  app,
+  cache,
+  getTopVolumeSymbols,
+  fetchCandles,
+  analyzePriceAction,
+  fetchDerivatives,
+  analyzeWithAgent,
+  scanAllPairs,
+};
