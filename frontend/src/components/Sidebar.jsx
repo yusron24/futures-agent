@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 
 const links = [
   { to: '/', label: 'Dashboard', icon: '📊' },
+  { to: '/rsi-screener', label: 'RSI Screener', icon: '🎯' },
   { to: '/watchlist', label: 'Watchlist', icon: '⭐' },
   { to: '/signals', label: 'Riwayat Sinyal', icon: '🔔' },
   { to: '/settings', label: 'Pengaturan', icon: '⚙️' },

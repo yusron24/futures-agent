@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import NotificationManager from './components/NotificationManager';
 import Dashboard from './pages/Dashboard';
 import CoinDetail from './pages/CoinDetail';
+import RsiScreener from './pages/RsiScreener';
 import Watchlist from './pages/Watchlist';
 import SignalHistory from './pages/SignalHistory';
 import Settings from './pages/Settings';
@@ -16,6 +17,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/coin/:id" element={<CoinDetail />} />
+          <Route path="/rsi-screener" element={<RsiScreener />} />
           <Route path="/watchlist" element={<Watchlist />} />
           <Route path="/signals" element={<SignalHistory />} />
           <Route path="/settings" element={<Settings />} />

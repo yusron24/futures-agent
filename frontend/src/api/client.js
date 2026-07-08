@@ -64,4 +64,9 @@ export async function testNotification() {
   return data;
 }
 
+export async function getRsiScreener() {
+  const { data } = await client.get('/api/rsi-screener');
+  return data;
+}
+
 export default client;
