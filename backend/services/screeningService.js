@@ -7,7 +7,11 @@ const { getSocialMomentum, isSocialConfigured } = require('./socialService');
 const { getOnchainMetrics } = require('./onchainService');
 const { getSettings } = require('../db/settingsStore');
 
-const FETCH_DELAY_MS = parseInt(process.env.DETAILED_FETCH_DELAY_MS || '1300', 10);
+// CoinGecko's free public tier rate limit is stricter than it looks on
+// paper (roughly 5-15 req/min in practice) - too short a delay here just
+// burns time on 429 retries instead of actually going faster. 4s keeps a
+// 30-coin cycle under ~2 minutes without hammering the rate limit.
+const FETCH_DELAY_MS = parseInt(process.env.DETAILED_FETCH_DELAY_MS || '4000', 10);
 const NEW_LISTING_DAYS = 30;
 
 let latestScreening = { coins: [], updatedAt: null, isRunning: false };

@@ -18,7 +18,7 @@ const DEFAULTS = {
   whaleAlertApiKey: process.env.WHALE_ALERT_API_KEY || '',
   scanIntervalMinutes: parseInt(process.env.SCAN_INTERVAL_MINUTES || '5', 10),
   signalScoreThreshold: parseFloat(process.env.SIGNAL_SCORE_THRESHOLD || '75'),
-  detailedCoinsLimit: parseInt(process.env.DETAILED_COINS_LIMIT || '60', 10),
+  detailedCoinsLimit: parseInt(process.env.DETAILED_COINS_LIMIT || '30', 10),
 };
 
 const NUMERIC_KEYS = new Set(['scanIntervalMinutes', 'signalScoreThreshold', 'detailedCoinsLimit']);
