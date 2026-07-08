@@ -19,6 +19,7 @@ const DEFAULTS = {
   scanIntervalMinutes: parseInt(process.env.SCAN_INTERVAL_MINUTES || '5', 10),
   signalScoreThreshold: parseFloat(process.env.SIGNAL_SCORE_THRESHOLD || '75'),
   detailedCoinsLimit: parseInt(process.env.DETAILED_COINS_LIMIT || '30', 10),
+  rsiScreenerCoinsLimit: parseInt(process.env.RSI_SCREENER_COINS_LIMIT || '100', 10),
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
   telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
   telegramEnabled: process.env.TELEGRAM_ENABLED === 'true',
@@ -27,13 +28,14 @@ const DEFAULTS = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
 };
 
-const NUMERIC_KEYS = new Set(['scanIntervalMinutes', 'signalScoreThreshold', 'detailedCoinsLimit']);
+const NUMERIC_KEYS = new Set(['scanIntervalMinutes', 'signalScoreThreshold', 'detailedCoinsLimit', 'rsiScreenerCoinsLimit']);
 const BOOLEAN_KEYS = new Set(['telegramEnabled', 'discordEnabled']);
 
 const LIMITS = {
   scanIntervalMinutes: { min: 1, max: 120 },
   signalScoreThreshold: { min: 0, max: 100 },
   detailedCoinsLimit: { min: 5, max: 250 },
+  rsiScreenerCoinsLimit: { min: 10, max: 250 },
 };
 
 function coerce(key, rawValue) {

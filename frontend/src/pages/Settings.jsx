@@ -9,6 +9,7 @@ const EMPTY_FORM = {
   scanIntervalMinutes: 5,
   signalScoreThreshold: 75,
   detailedCoinsLimit: 60,
+  rsiScreenerCoinsLimit: 100,
   telegramBotToken: '',
   telegramChatId: '',
   telegramEnabled: false,
@@ -39,6 +40,7 @@ export default function Settings() {
           scanIntervalMinutes: s.scanIntervalMinutes,
           signalScoreThreshold: s.signalScoreThreshold,
           detailedCoinsLimit: s.detailedCoinsLimit,
+          rsiScreenerCoinsLimit: s.rsiScreenerCoinsLimit,
           telegramBotToken: s.telegramBotToken || '',
           telegramChatId: s.telegramChatId || '',
           telegramEnabled: Boolean(s.telegramEnabled),
@@ -156,7 +158,7 @@ export default function Settings() {
           />
         </Field>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Interval Scan (menit)">
             <input
               type="number"
@@ -184,6 +186,19 @@ export default function Settings() {
               max={250}
               value={form.detailedCoinsLimit}
               onChange={(e) => set({ detailedCoinsLimit: e.target.value })}
+              className="input"
+            />
+          </Field>
+          <Field
+            label="Pool RSI Screener"
+            hint="Jumlah koin teratas yang dipindai bergilir untuk halaman RSI Screener. Lebih besar = cakupan lebih luas, tapi satu putaran penuh butuh waktu lebih lama."
+          >
+            <input
+              type="number"
+              min={10}
+              max={250}
+              value={form.rsiScreenerCoinsLimit}
+              onChange={(e) => set({ rsiScreenerCoinsLimit: e.target.value })}
               className="input"
             />
           </Field>

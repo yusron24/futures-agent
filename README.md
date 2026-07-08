@@ -58,6 +58,7 @@ Buka `http://localhost:5173` di browser.
 | `DETAILED_COINS_LIMIT` | Jumlah koin top-mover yang dihitung indikator detail (RSI/MACD/volume spike/on-chain) per siklus, default 60. Dibatasi agar tidak melebihi rate limit gratis CoinGecko (~10-30 request/menit) — bisa diubah lewat halaman Pengaturan |
 | `SCAN_INTERVAL_MINUTES` | Interval scheduler penghitungan ulang skor (default 5 menit) — bisa diubah lewat halaman Pengaturan |
 | `SIGNAL_SCORE_THRESHOLD` | Skor minimum agar sebuah koin dicatat sebagai "sinyal" ke riwayat (default 75) — bisa diubah lewat halaman Pengaturan |
+| `RSI_SCREENER_COINS_LIMIT` | Jumlah koin top-market-cap yang dipindai bergilir untuk halaman RSI Screener (default 100) — bisa diubah lewat halaman Pengaturan |
 | `CORS_ORIGIN` | Origin frontend yang diizinkan (default `http://localhost:5173`) |
 | `FRONTEND_URL` | URL publik frontend, dipakai untuk link "lihat detail" di notifikasi Telegram/Discord (default `http://localhost:5173`) |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `TELEGRAM_ENABLED` | Opsional, notifikasi Telegram — bisa juga diisi & di-toggle lewat halaman Pengaturan |
@@ -103,6 +104,19 @@ Setiap koin hanya mengirim satu notifikasi per siklus meski memenuhi keduanya. P
 
 Jika token/webhook salah atau ada masalah jaringan, error-nya di-catch dan dicatat di log backend (`[notification] Telegram/Discord send failed: ...`) tanpa menghentikan siklus screening atau mempengaruhi koin lain.
 
+### RSI Screener
+
+Halaman terpisah (`/rsi-screener`) yang menampilkan dua daftar: koin **oversold** (RSI < 30, secara historis berpotensi rebound) dan **overbought** (RSI > 70, berpotensi koreksi) — murni indikator teknikal, bukan sinyal beli/jual.
+
+RSI di sini dihitung oleh `backend/services/rsiScreenerService.js`, sebuah proses **pemindaian bergilir independen** yang berjalan di latar belakang, terpisah dari siklus screening utama:
+
+- Mengambil pool `RSI_SCREENER_COINS_LIMIT` koin teratas berdasarkan market cap (default 100, maksimal 250).
+- Memproses 5 koin setiap ~20 detik secara bergilir (RSI 14-hari dari histori 30 hari), sehingga satu putaran penuh untuk pool 100 koin butuh sekitar 7 menit, atau ~17 menit untuk 250 koin.
+- **Otomatis berhenti sepenuhnya** saat siklus screening utama (5 menit) sedang berjalan, supaya keduanya tidak berebut kuota rate-limit CoinGecko secara bersamaan.
+- Memperbesar `RSI_SCREENER_COINS_LIMIT` hanya memperlama waktu satu putaran penuh, bukan menambah beban request per detik — aman untuk tier gratis, tapi butuh CoinGecko API key kalau ingin cakupan luas + putaran cepat sekaligus.
+
+Halaman ini polling setiap 30 detik dan menampilkan progres pemindaian (jumlah koin yang sudah kena giliran vs ukuran pool, jumlah putaran penuh yang selesai) supaya jelas datanya belum tentu real-time untuk seluruh pool.
+
 ## Endpoint API
 
 | Method | Path | Keterangan |
@@ -114,6 +128,7 @@ Jika token/webhook salah atau ada masalah jaringan, error-nya di-catch dan dicat
 | DELETE | `/api/watchlist/:coinId` | Hapus dari watchlist |
 | GET | `/api/signals` | Riwayat sinyal tersimpan (`limit`, `coinId`) |
 | GET | `/api/categories` | Daftar kategori/sektor koin |
+| GET | `/api/rsi-screener` | Koin oversold (RSI<30) / overbought (RSI>70) dari pool yang sudah dipindai bergilir |
 | GET | `/api/health` | Status backend & konfigurasi |
 | GET | `/api/settings` | Baca pengaturan aktif (API key, interval scan, threshold, dll) |
 | PUT | `/api/settings` | Ubah pengaturan — tersimpan di SQLite, diterapkan langsung tanpa restart |
