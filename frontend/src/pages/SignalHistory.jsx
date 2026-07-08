@@ -31,36 +31,45 @@ export default function SignalHistory() {
             Belum ada sinyal yang tercatat. Sinyal muncul otomatis saat suatu koin melewati skor threshold.
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-terminal-muted border-b border-terminal-border uppercase text-[11px] tracking-wider">
-                <th className="px-4 py-3 font-medium">Waktu</th>
-                <th className="px-2 py-3 font-medium">Koin</th>
-                <th className="px-2 py-3 font-medium text-right">Harga</th>
-                <th className="px-2 py-3 font-medium text-right">24h</th>
-                <th className="px-2 py-3 font-medium text-right">Vol Spike</th>
-                <th className="px-2 py-3 font-medium text-right">RSI</th>
-                <th className="px-2 py-3 font-medium text-right">Skor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {signals.map((s) => (
-                <tr
-                  key={s.id}
-                  className="border-b border-terminal-border/50 hover:bg-white/5 cursor-pointer"
-                  onClick={() => navigate(`/coin/${s.coin_id}`)}
-                >
-                  <td className="px-4 py-3 text-terminal-muted text-xs">{new Date(s.created_at + 'Z').toLocaleString('id-ID')}</td>
-                  <td className="px-2 py-3 font-semibold">{s.symbol}</td>
-                  <td className="px-2 py-3 text-right font-mono">{formatPrice(s.price)}</td>
-                  <td className={`px-2 py-3 text-right font-mono ${changeColor(s.change_24h)}`}>{formatPercent(s.change_24h)}</td>
-                  <td className="px-2 py-3 text-right font-mono">{s.volume_spike != null ? `${s.volume_spike.toFixed(2)}x` : '-'}</td>
-                  <td className="px-2 py-3 text-right font-mono">{s.rsi != null ? s.rsi.toFixed(0) : '-'}</td>
-                  <td className="px-2 py-3 text-right"><ScoreBadge score={s.score} /></td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-terminal-muted border-b border-terminal-border uppercase text-[11px] tracking-wider">
+                  <th className="px-4 py-3 font-medium hidden md:table-cell">Waktu</th>
+                  <th className="px-3 md:px-2 py-3 font-medium">Koin</th>
+                  <th className="px-2 py-3 font-medium text-right">Harga</th>
+                  <th className="px-2 py-3 font-medium text-right">24h</th>
+                  <th className="px-2 py-3 font-medium text-right hidden sm:table-cell">Vol Spike</th>
+                  <th className="px-2 py-3 font-medium text-right hidden sm:table-cell">RSI</th>
+                  <th className="px-2 py-3 font-medium text-right">Skor</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {signals.map((s) => (
+                  <tr
+                    key={s.id}
+                    className="border-b border-terminal-border/50 hover:bg-white/5 cursor-pointer"
+                    onClick={() => navigate(`/coin/${s.coin_id}`)}
+                  >
+                    <td className="px-4 py-3 text-terminal-muted text-xs whitespace-nowrap hidden md:table-cell">
+                      {new Date(s.created_at + 'Z').toLocaleString('id-ID')}
+                    </td>
+                    <td className="px-3 md:px-2 py-3 font-semibold">
+                      {s.symbol}
+                      <div className="text-[10px] text-terminal-muted font-normal md:hidden">
+                        {new Date(s.created_at + 'Z').toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </td>
+                    <td className="px-2 py-3 text-right font-mono whitespace-nowrap">{formatPrice(s.price)}</td>
+                    <td className={`px-2 py-3 text-right font-mono whitespace-nowrap ${changeColor(s.change_24h)}`}>{formatPercent(s.change_24h)}</td>
+                    <td className="px-2 py-3 text-right font-mono hidden sm:table-cell">{s.volume_spike != null ? `${s.volume_spike.toFixed(2)}x` : '-'}</td>
+                    <td className="px-2 py-3 text-right font-mono hidden sm:table-cell">{s.rsi != null ? s.rsi.toFixed(0) : '-'}</td>
+                    <td className="px-2 py-3 text-right"><ScoreBadge score={s.score} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

@@ -173,7 +173,7 @@ export default function CoinDetail() {
                 (struktur sama seperti data asli) dan <b>tidak</b> ikut memengaruhi skor. Atur di halaman Pengaturan.
               </p>
             )}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <OnchainStat label="Exchange Inflow 24h" value={formatUsdCompact(onchain.exchangeInflow24hUsd)} />
               <OnchainStat label="Exchange Outflow 24h" value={formatUsdCompact(onchain.exchangeOutflow24hUsd)} />
               <OnchainStat
@@ -204,7 +204,7 @@ export default function CoinDetail() {
       {screening && (
         <div className="mt-4 bg-terminal-panel border border-terminal-border rounded-lg p-4">
           <div className="text-sm text-terminal-muted mb-2">Rincian Skor Potensi</div>
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
             {WEIGHT_ITEMS.map(({ key, label }) => {
               const value = screening.scoreBreakdown?.[key];
               const weightPct = screening.scoreWeights ? Math.round(screening.scoreWeights[key] * 100) : null;

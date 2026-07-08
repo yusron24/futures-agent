@@ -21,16 +21,18 @@ export default function RsiScreener() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const load = useCallback(async (tf) => {
-    setLoading(true);
+  // Background polls are silent so the tables refresh in place without
+  // flashing skeletons; only interval switches show a loading state.
+  const load = useCallback(async (tf, opts = {}) => {
+    if (!opts.silent) setLoading(true);
     try {
       const res = await getRsiScreener(tf);
       setData(res);
       setError(null);
     } catch (err) {
-      setError(err.response?.data?.error || 'Gagal memuat RSI screener.');
+      if (!opts.silent) setError(err.response?.data?.error || 'Gagal memuat RSI screener.');
     } finally {
-      setLoading(false);
+      if (!opts.silent) setLoading(false);
     }
   }, []);
 
@@ -38,7 +40,7 @@ export default function RsiScreener() {
     load(interval);
   }, [interval, load]);
 
-  useInterval(() => load(interval), POLL_MS);
+  useInterval(() => load(interval, { silent: true }), POLL_MS);
 
   return (
     <div>
@@ -50,7 +52,7 @@ export default function RsiScreener() {
         berpotensi koreksi) — murni indikator teknikal, bukan sinyal beli/jual. Pilih timeframe RSI-14 di bawah.
       </p>
 
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         {TIMEFRAMES.map((tf) => (
           <button
             key={tf.value}
@@ -67,7 +69,7 @@ export default function RsiScreener() {
       </div>
 
       {data && (
-        <div className="flex flex-wrap gap-4 text-xs text-terminal-muted mb-4 px-4 py-3 bg-terminal-panel border border-terminal-border rounded-lg">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-terminal-muted mb-4 px-3 sm:px-4 py-3 bg-terminal-panel border border-terminal-border rounded-lg">
           <span>
             Dianalisis: <b className="text-terminal-text">{data.scannedCount}</b> / {data.poolSize} pair
           </span>

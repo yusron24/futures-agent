@@ -2,9 +2,9 @@ export default function FilterBar({ filters, onChange, onRefresh, loading, autoR
   const set = (patch) => onChange({ ...filters, ...patch });
 
   return (
-    <div className="flex flex-wrap items-center gap-3 p-4 bg-terminal-panel border border-terminal-border rounded-lg mb-4">
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-terminal-muted">Min Volume 24h</label>
+    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 p-3 sm:p-4 bg-terminal-panel border border-terminal-border rounded-lg mb-4">
+      <div className="flex items-center justify-between sm:justify-start gap-2">
+        <label className="text-xs text-terminal-muted whitespace-nowrap">Min Volume 24h</label>
         <select
           value={filters.minVolume24h}
           onChange={(e) => set({ minVolume24h: e.target.value })}
@@ -29,7 +29,7 @@ export default function FilterBar({ filters, onChange, onRefresh, loading, autoR
         Baru listing di Binance (&lt;30 hari)
       </label>
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="flex items-center justify-between sm:justify-end gap-3 sm:ml-auto">
         <label className="flex items-center gap-2 text-xs text-terminal-muted cursor-pointer">
           <input
             type="checkbox"
@@ -42,9 +42,9 @@ export default function FilterBar({ filters, onChange, onRefresh, loading, autoR
         <button
           onClick={onRefresh}
           disabled={loading}
-          className="px-3 py-1.5 text-xs font-semibold rounded bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/40 hover:bg-terminal-accent/25 disabled:opacity-50 transition-colors"
+          className="px-3 py-1.5 text-xs font-semibold rounded bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/40 hover:bg-terminal-accent/25 disabled:opacity-50 transition-colors whitespace-nowrap"
         >
-          {loading ? 'Memuat...' : '⟳ Refresh Data'}
+          {loading ? 'Memuat...' : '⟳ Refresh'}
         </button>
       </div>
     </div>

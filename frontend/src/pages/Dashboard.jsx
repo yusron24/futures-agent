@@ -28,10 +28,11 @@ export default function Dashboard() {
     }
   }, []);
 
+  // `silent` skips the loading state so background polls / websocket pushes
+  // update the table in place without flashing skeletons or disabling buttons.
   const loadScreening = useCallback(
     async (opts = {}) => {
-      setLoading(true);
-      setError(null);
+      if (!opts.silent) setLoading(true);
       try {
         const params = {};
         if (filters.minVolume24h && filters.minVolume24h !== '0') params.minVolume24h = filters.minVolume24h;
@@ -41,14 +42,17 @@ export default function Dashboard() {
         const data = await getScreening(params);
         setCoins(data.coins);
         setUpdatedAt(data.updatedAt);
+        setError(null);
       } catch (err) {
         console.error(err);
-        setError(
-          err.response?.data?.error ||
-            'Gagal memuat data screening. Binance mungkin sedang membatasi rate limit, coba lagi sebentar lagi.'
-        );
+        if (!opts.silent) {
+          setError(
+            err.response?.data?.error ||
+              'Gagal memuat data screening. Binance mungkin sedang membatasi rate limit, coba lagi sebentar lagi.'
+          );
+        }
       } finally {
-        setLoading(false);
+        if (!opts.silent) setLoading(false);
       }
     },
     [filters]
@@ -64,14 +68,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     const socket = getSocket();
-    const handleUpdate = () => loadScreening();
+    const handleUpdate = () => loadScreening({ silent: true });
     socket.on('screening:update', handleUpdate);
     return () => socket.off('screening:update', handleUpdate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
   useInterval(() => {
-    if (autoRefresh) loadScreening();
+    if (autoRefresh) loadScreening({ silent: true });
   }, autoRefresh ? POLL_MS : null);
 
   const handleToggleWatchlist = async (coin) => {
@@ -89,15 +93,15 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-4">
         <div>
-          <h1 className="text-xl font-bold text-terminal-text">Dashboard Screening</h1>
-          <p className="text-xs text-terminal-muted mt-1">
+          <h1 className="text-lg sm:text-xl font-bold text-terminal-text">Dashboard Screening</h1>
+          <p className="text-xs text-terminal-muted mt-0.5">
             {updatedAt ? `Update terakhir: ${timeAgo(updatedAt)}` : 'Memuat data awal...'}
           </p>
         </div>
-        <div className="text-right text-xs text-terminal-muted">
-          <div>{coins.length} pair dianalisis (Binance USDT-M Futures)</div>
+        <div className="text-xs text-terminal-muted sm:text-right">
+          {coins.length} pair dianalisis (Binance USDT-M Futures)
         </div>
       </div>
 

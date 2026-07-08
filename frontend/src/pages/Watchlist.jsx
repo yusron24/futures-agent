@@ -52,49 +52,51 @@ export default function Watchlist() {
             Watchlist masih kosong. Klik ikon ☆ di dashboard untuk menambahkan koin.
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-terminal-muted border-b border-terminal-border uppercase text-[11px] tracking-wider">
-                <th className="px-4 py-3 font-medium">Koin</th>
-                <th className="px-2 py-3 font-medium text-right">Harga</th>
-                <th className="px-2 py-3 font-medium text-right">24h</th>
-                <th className="px-2 py-3 font-medium text-right">Skor</th>
-                <th className="px-2 py-3 font-medium text-right">Alert &gt;</th>
-                <th className="px-2 py-3 font-medium text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {watchlist.map((w) => {
-                const s = scores[w.coin_id];
-                return (
-                  <tr
-                    key={w.coin_id}
-                    className="border-b border-terminal-border/50 hover:bg-white/5 cursor-pointer"
-                    onClick={() => navigate(`/coin/${w.coin_id}`)}
-                  >
-                    <td className="px-4 py-3 font-semibold">{w.symbol}</td>
-                    <td className="px-2 py-3 text-right font-mono">{s ? formatPrice(s.price) : '-'}</td>
-                    <td className={`px-2 py-3 text-right font-mono ${s ? changeColor(s.change24h) : ''}`}>
-                      {s ? formatPercent(s.change24h) : '-'}
-                    </td>
-                    <td className="px-2 py-3 text-right">{s ? <ScoreBadge score={s.score} /> : '-'}</td>
-                    <td className="px-2 py-3 text-right font-mono text-terminal-muted">{w.alert_threshold}</td>
-                    <td className="px-2 py-3 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemove(w.coin_id);
-                        }}
-                        className="text-terminal-red text-xs hover:underline"
-                      >
-                        Hapus
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-terminal-muted border-b border-terminal-border uppercase text-[11px] tracking-wider">
+                  <th className="px-4 py-3 font-medium">Koin</th>
+                  <th className="px-2 py-3 font-medium text-right">Harga</th>
+                  <th className="px-2 py-3 font-medium text-right">24h</th>
+                  <th className="px-2 py-3 font-medium text-right">Skor</th>
+                  <th className="px-2 py-3 font-medium text-right hidden sm:table-cell">Alert &gt;</th>
+                  <th className="px-2 py-3 font-medium text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {watchlist.map((w) => {
+                  const s = scores[w.coin_id];
+                  return (
+                    <tr
+                      key={w.coin_id}
+                      className="border-b border-terminal-border/50 hover:bg-white/5 cursor-pointer"
+                      onClick={() => navigate(`/coin/${w.coin_id}`)}
+                    >
+                      <td className="px-4 py-3 font-semibold">{w.symbol}</td>
+                      <td className="px-2 py-3 text-right font-mono whitespace-nowrap">{s ? formatPrice(s.price) : '-'}</td>
+                      <td className={`px-2 py-3 text-right font-mono whitespace-nowrap ${s ? changeColor(s.change24h) : ''}`}>
+                        {s ? formatPercent(s.change24h) : '-'}
+                      </td>
+                      <td className="px-2 py-3 text-right">{s ? <ScoreBadge score={s.score} /> : '-'}</td>
+                      <td className="px-2 py-3 text-right font-mono text-terminal-muted hidden sm:table-cell">{w.alert_threshold}</td>
+                      <td className="px-2 py-3 text-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemove(w.coin_id);
+                          }}
+                          className="text-terminal-red text-xs hover:underline p-1 -m-1"
+                        >
+                          Hapus
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
