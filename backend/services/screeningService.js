@@ -1,17 +1,12 @@
 const db = require('../db/database');
 const coingecko = require('./coingeckoService');
-const { getTopCoins, getCoinsByCategory, sleep } = coingecko;
+const { getTopCoins, getCoinsByCategory } = coingecko;
 const { calculateRSI, calculateMACD, calculateVolatility, toDailySeries } = require('./indicators');
 const { computeScore } = require('./scoringService');
 const { getSocialMomentum, isSocialConfigured } = require('./socialService');
 const { getOnchainMetrics } = require('./onchainService');
 const { getSettings } = require('../db/settingsStore');
 
-// CoinGecko's free public tier rate limit is stricter than it looks on
-// paper (roughly 5-15 req/min in practice) - too short a delay here just
-// burns time on 429 retries instead of actually going faster. 4s keeps a
-// 30-coin cycle under ~2 minutes without hammering the rate limit.
-const FETCH_DELAY_MS = parseInt(process.env.DETAILED_FETCH_DELAY_MS || '4000', 10);
 const NEW_LISTING_DAYS = 30;
 
 let latestScreening = { coins: [], updatedAt: null, isRunning: false };
@@ -170,11 +165,10 @@ async function runFullScreening({ category } = {}) {
   watchlistIds.forEach((id) => detailedIds.add(id));
 
   const results = [];
-  let isFirst = true;
   for (const quick of quickList) {
     if (detailedIds.has(quick.id)) {
-      if (!isFirst) await sleep(FETCH_DELAY_MS);
-      isFirst = false;
+      // Pacing between CoinGecko requests is handled centrally by the
+      // shared adaptive rate limiter in utils/httpClient.js.
       const detail = await fetchDetailedMetrics(quick);
       results.push(finalizeCoin(quick, detail));
     } else {
