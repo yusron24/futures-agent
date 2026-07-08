@@ -5,6 +5,7 @@ const { computeScore } = require('./scoringService');
 const { getSocialMomentum, isSocialConfigured } = require('./socialService');
 const { getOnchainMetrics } = require('./onchainService');
 const { getSettings } = require('../db/settingsStore');
+const { mapWithConcurrency } = require('../utils/concurrency');
 
 const NEW_LISTING_DAYS = 30;
 
@@ -149,11 +150,14 @@ async function runFullScreening() {
 
   const fullList = [...universe, ...missingWatchlist].map((entry, i) => ({ ...entry, rank: i + 1 }));
 
-  const results = [];
-  for (const entry of fullList) {
+  // Bounded concurrency pipelines the network round-trips; the global
+  // rate limiter in binanceClient still spaces the request starts, so
+  // this cuts a full cycle from minutes (serial RTTs) to seconds without
+  // changing the request rate Binance sees.
+  const results = await mapWithConcurrency(fullList, 5, async (entry) => {
     const metrics = await computeSymbolMetrics(entry);
-    results.push(finalizeCoin(entry, metrics));
-  }
+    return finalizeCoin(entry, metrics);
+  });
 
   results.sort((a, b) => b.score - a.score);
   return results;

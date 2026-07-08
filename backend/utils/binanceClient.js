@@ -44,9 +44,9 @@ function getProxyAgent() {
 // in case, same pattern as before but starting much faster and capping
 // much lower.
 // ---------------------------------------------------------------------
-const MIN_INTERVAL_MS = 60;
+const MIN_INTERVAL_MS = 40;
 const MAX_INTERVAL_MS = 5000;
-let currentIntervalMs = parseInt(process.env.BINANCE_FETCH_DELAY_MS || '120', 10);
+let currentIntervalMs = parseInt(process.env.BINANCE_FETCH_DELAY_MS || '60', 10);
 let nextAllowedAt = 0;
 let consecutiveSuccesses = 0;
 

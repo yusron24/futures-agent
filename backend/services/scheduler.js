@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const db = require('../db/database');
 const { triggerScreening } = require('./screeningService');
+const { prewarmRsiTimeframes } = require('./rsiScreenerService');
 const { notifyCoinSignal } = require('./notificationService');
 const { getSettings } = require('../db/settingsStore');
 
@@ -50,6 +51,13 @@ async function runCycle() {
       },
     });
     console.log('[scheduler] screening cycle complete');
+
+    // Keep the non-daily RSI screener timeframes warm in the background,
+    // so switching timeframe on the frontend hits cached data instead of
+    // waiting on a full universe sweep.
+    prewarmRsiTimeframes().catch((err) =>
+      console.error('[scheduler] rsi prewarm failed:', err.message)
+    );
   } catch (err) {
     console.error('[scheduler] screening cycle failed:', err.message);
   }

@@ -128,8 +128,11 @@ Semua request ke Binance (`backend/utils/binanceClient.js`) akan dirutekan lewat
 
 Halaman terpisah (`/rsi-screener`) yang menampilkan dua daftar: koin **oversold** (RSI < 30, secara historis berpotensi rebound) dan **overbought** (RSI > 70, berpotensi koreksi) — murni indikator teknikal, bukan sinyal beli/jual. Pilih timeframe RSI-14 lewat tombol di atas tabel: **15m, 1H, 4H, 1D, 1W**.
 
+Endpoint-nya **tidak pernah menahan request** (stale-while-revalidate):
+
 - Timeframe **1D** gratis — hasilnya langsung diambil dari siklus screening utama yang sudah menghitung RSI harian untuk seluruh universe, tanpa request tambahan ke Binance.
-- Timeframe lain (**15m/1H/4H/1W**) memicu pemindaian kline khusus untuk seluruh universe pada interval tersebut, di-cache sebentar per-timeframe (30 detik untuk 15m, sampai 15 menit untuk 1W) supaya polling 30 detik di halaman ini tidak memicu fetch ulang ke Binance setiap kali.
+- Timeframe lain (**15m/1H/4H/1W**) dijawab seketika dari hasil pemindaian terakhir; kalau datanya sudah basi (60 detik untuk 15m, hingga 30 menit untuk 1W), pemindaian baru berjalan **di latar belakang** dengan konkurensi terbatas — API tetap membalas instan dengan flag `isRefreshing` + progres (`progress.done/total`), dan frontend menampilkan progress bar sambil polling cepat sampai selesai. Data lama tetap ditampilkan selama pemindaian ulang.
+- Setelah setiap siklus screening utama, backend **prewarm** semua timeframe non-1D di latar belakang, jadi pindah timeframe hampir selalu langsung dapat data tanpa menunggu.
 
 ## Endpoint API
 

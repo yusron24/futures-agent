@@ -7,6 +7,7 @@ import useInterval from '../hooks/useInterval';
 import { formatPrice, formatPercent, changeColor, timeAgo } from '../utils/format';
 
 const POLL_MS = 30000;
+const REFRESHING_POLL_MS = 2500;
 const TIMEFRAMES = [
   { value: '15m', label: '15m' },
   { value: '1h', label: '1H' },
@@ -21,8 +22,9 @@ export default function RsiScreener() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Background polls are silent so the tables refresh in place without
-  // flashing skeletons; only interval switches show a loading state.
+  // The API always answers instantly (sweeps run server-side in the
+  // background), so `loading` only covers the brief fetch itself; while a
+  // sweep is in progress we poll fast and render its live progress.
   const load = useCallback(async (tf, opts = {}) => {
     if (!opts.silent) setLoading(true);
     try {
@@ -37,15 +39,19 @@ export default function RsiScreener() {
   }, []);
 
   useEffect(() => {
+    setData(null);
     load(interval);
   }, [interval, load]);
 
-  useInterval(() => load(interval, { silent: true }), POLL_MS);
+  const scanning = Boolean(data?.isRefreshing);
+  useInterval(() => load(interval, { silent: true }), scanning ? REFRESHING_POLL_MS : POLL_MS);
+
+  const emptyFirstScan = scanning && data?.scannedCount === 0;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-terminal-text">RSI Screener</h1>
+        <h1 className="text-lg sm:text-xl font-bold text-terminal-text">RSI Screener</h1>
       </div>
       <p className="text-xs text-terminal-muted mb-4">
         Pair Binance Futures yang sedang oversold (RSI &lt; 30, berpotensi rebound) atau overbought (RSI &gt; 70,
@@ -69,14 +75,30 @@ export default function RsiScreener() {
       </div>
 
       {data && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-terminal-muted mb-4 px-3 sm:px-4 py-3 bg-terminal-panel border border-terminal-border rounded-lg">
-          <span>
-            Dianalisis: <b className="text-terminal-text">{data.scannedCount}</b> / {data.poolSize} pair
-          </span>
-          <span>
-            Timeframe: <b className="text-terminal-text">{data.interval}</b>
-          </span>
-          <span>Update terakhir: {data.updatedAt ? timeAgo(data.updatedAt) : 'belum ada'}</span>
+        <div className="mb-4 px-3 sm:px-4 py-3 bg-terminal-panel border border-terminal-border rounded-lg">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-terminal-muted">
+            <span>
+              Dianalisis: <b className="text-terminal-text">{data.scannedCount}</b> / {data.poolSize || '?'} pair
+            </span>
+            <span>
+              Timeframe: <b className="text-terminal-text">{data.interval}</b>
+            </span>
+            <span>Update terakhir: {data.updatedAt ? timeAgo(data.updatedAt) : 'belum ada'}</span>
+            {scanning && (
+              <span className="text-terminal-amber">
+                ⏳ Memindai{data.progress ? ` ${data.progress.done}/${data.progress.total} pair` : '...'}
+                {data.updatedAt ? ' (data lama tetap tampil)' : ''}
+              </span>
+            )}
+          </div>
+          {scanning && data.progress?.total > 0 && (
+            <div className="mt-2 h-1 rounded bg-terminal-border overflow-hidden">
+              <div
+                className="h-full bg-terminal-amber transition-all duration-500"
+                style={{ width: `${Math.round((data.progress.done / data.progress.total) * 100)}%` }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -93,6 +115,7 @@ export default function RsiScreener() {
           accentClass="text-terminal-green border-terminal-green/30"
           coins={data?.oversold}
           loading={loading}
+          scanning={emptyFirstScan}
         />
         <RsiTable
           title="Overbought (RSI > 70)"
@@ -100,13 +123,14 @@ export default function RsiScreener() {
           accentClass="text-terminal-red border-terminal-red/30"
           coins={data?.overbought}
           loading={loading}
+          scanning={emptyFirstScan}
         />
       </div>
     </div>
   );
 }
 
-function RsiTable({ title, hint, accentClass, coins, loading }) {
+function RsiTable({ title, hint, accentClass, coins, loading, scanning }) {
   const navigate = useNavigate();
 
   return (
@@ -116,46 +140,48 @@ function RsiTable({ title, hint, accentClass, coins, loading }) {
         <span className="text-[10px] text-terminal-muted">{hint}</span>
       </div>
 
-      {loading && !coins ? (
+      {(loading && !coins) || scanning ? (
         <TableSkeleton rows={5} />
       ) : !coins || coins.length === 0 ? (
         <div className="text-center py-10 text-terminal-muted text-sm">
           Belum ada koin yang cocok di pool yang sudah dipindai.
         </div>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-terminal-muted border-b border-terminal-border uppercase text-[11px] tracking-wider">
-              <th className="px-4 py-2 font-medium">Pair</th>
-              <th className="px-2 py-2 font-medium text-right">Harga</th>
-              <th className="px-2 py-2 font-medium text-right">24h</th>
-              <th className="px-2 py-2 font-medium text-right">RSI</th>
-            </tr>
-          </thead>
-          <tbody>
-            {coins.map((coin) => (
-              <tr
-                key={coin.id}
-                onClick={() => navigate(`/coin/${coin.id}`)}
-                className="border-b border-terminal-border/50 hover:bg-white/5 cursor-pointer animate-fade-in"
-              >
-                <td className="px-4 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <CoinAvatar symbol={coin.symbol} />
-                    <span className="font-semibold text-terminal-text">{coin.symbol}</span>
-                  </div>
-                </td>
-                <td className="px-2 py-2.5 text-right font-mono">{formatPrice(coin.price)}</td>
-                <td className={`px-2 py-2.5 text-right font-mono ${changeColor(coin.change24h)}`}>
-                  {formatPercent(coin.change24h)}
-                </td>
-                <td className={`px-2 py-2.5 text-right font-mono font-bold ${accentClass.split(' ')[0]}`}>
-                  {coin.rsi.toFixed(1)}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-terminal-muted border-b border-terminal-border uppercase text-[11px] tracking-wider">
+                <th className="px-4 py-2 font-medium">Pair</th>
+                <th className="px-2 py-2 font-medium text-right">Harga</th>
+                <th className="px-2 py-2 font-medium text-right">24h</th>
+                <th className="px-2 py-2 font-medium text-right">RSI</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {coins.map((coin) => (
+                <tr
+                  key={coin.id}
+                  onClick={() => navigate(`/coin/${coin.id}`)}
+                  className="border-b border-terminal-border/50 hover:bg-white/5 cursor-pointer animate-fade-in"
+                >
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <CoinAvatar symbol={coin.symbol} />
+                      <span className="font-semibold text-terminal-text">{coin.symbol}</span>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2.5 text-right font-mono whitespace-nowrap">{formatPrice(coin.price)}</td>
+                  <td className={`px-2 py-2.5 text-right font-mono whitespace-nowrap ${changeColor(coin.change24h)}`}>
+                    {formatPercent(coin.change24h)}
+                  </td>
+                  <td className={`px-2 py-2.5 text-right font-mono font-bold ${accentClass.split(' ')[0]}`}>
+                    {coin.rsi.toFixed(1)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
