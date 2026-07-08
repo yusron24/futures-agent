@@ -59,4 +59,9 @@ export async function updateSettings(partial) {
   return data;
 }
 
+export async function testNotification() {
+  const { data } = await client.post('/api/settings/test-notification');
+  return data;
+}
+
 export default client;

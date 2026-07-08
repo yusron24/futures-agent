@@ -59,6 +59,9 @@ Buka `http://localhost:5173` di browser.
 | `SCAN_INTERVAL_MINUTES` | Interval scheduler penghitungan ulang skor (default 5 menit) — bisa diubah lewat halaman Pengaturan |
 | `SIGNAL_SCORE_THRESHOLD` | Skor minimum agar sebuah koin dicatat sebagai "sinyal" ke riwayat (default 75) — bisa diubah lewat halaman Pengaturan |
 | `CORS_ORIGIN` | Origin frontend yang diizinkan (default `http://localhost:5173`) |
+| `FRONTEND_URL` | URL publik frontend, dipakai untuk link "lihat detail" di notifikasi Telegram/Discord (default `http://localhost:5173`) |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `TELEGRAM_ENABLED` | Opsional, notifikasi Telegram — bisa juga diisi & di-toggle lewat halaman Pengaturan |
+| `DISCORD_WEBHOOK_URL` / `DISCORD_ENABLED` | Opsional, notifikasi Discord — bisa juga diisi & di-toggle lewat halaman Pengaturan |
 
 ## Cara Kerja Screening
 
@@ -79,6 +82,27 @@ Buka `http://localhost:5173` di browser.
 
 Jika tidak ada API key CryptoQuant/Whale Alert yang dikonfigurasi (atau panggilan live gagal), service mengembalikan **data dummy deterministik** — angka berubah tiap 5 menit tapi stabil di jendela yang sama, dengan struktur field identik ke data asli sehingga tinggal diganti nanti. Data dummy ditampilkan di halaman detail koin dengan label jelas "DUMMY (contoh)" dan **tidak** ikut memengaruhi skor — bobot 25%-nya dialihkan proporsional ke metrik lain sampai data live tersedia.
 
+### Notifikasi Telegram & Discord
+
+`backend/services/notificationService.js` mengirim notifikasi otomatis setiap siklus screening saat:
+
+- koin di **watchlist** mencapai skor ≥ threshold alert-nya masing-masing, atau
+- koin apa pun mencapai skor ≥ `SIGNAL_SCORE_THRESHOLD` (sinyal "Potensi Pergerakan Besar" baru, dicatat ke `signals`).
+
+Setiap koin hanya mengirim satu notifikasi per siklus meski memenuhi keduanya. Pesan berisi nama, simbol, skor, perubahan harga 24h, volume spike, RSI, dan link ke halaman detail (`FRONTEND_URL`). Aktifkan dan isi kredensialnya lewat halaman **Pengaturan** (tersimpan di SQLite, langsung berlaku tanpa restart), lalu pakai tombol **Kirim Notifikasi Uji Coba** untuk memastikan token/webhook-nya valid — hasil per-channel (berhasil/gagal beserta alasannya) langsung ditampilkan.
+
+**Cara mendapatkan Telegram Bot Token & Chat ID:**
+1. Chat [@BotFather](https://t.me/BotFather) di Telegram, kirim `/newbot`, ikuti instruksinya → dapat **Bot Token** (format `123456789:AA...`).
+2. Mulai chat dengan bot Anda (klik link yang diberikan BotFather) dan kirim pesan apa saja, atau tambahkan bot ke grup yang diinginkan.
+3. Buka `https://api.telegram.org/bot<TOKEN>/getUpdates` di browser (ganti `<TOKEN>`), cari field `"chat":{"id": ...}` di hasil JSON-nya → itu **Chat ID** Anda (untuk grup, angkanya negatif).
+
+**Cara mendapatkan Discord Webhook URL:**
+1. Di server Discord Anda, buka **Server Settings → Integrations → Webhooks → New Webhook**.
+2. Pilih channel tujuan, beri nama (opsional), lalu klik **Copy Webhook URL**.
+3. Tempel URL tersebut di halaman Pengaturan.
+
+Jika token/webhook salah atau ada masalah jaringan, error-nya di-catch dan dicatat di log backend (`[notification] Telegram/Discord send failed: ...`) tanpa menghentikan siklus screening atau mempengaruhi koin lain.
+
 ## Endpoint API
 
 | Method | Path | Keterangan |
@@ -93,6 +117,7 @@ Jika tidak ada API key CryptoQuant/Whale Alert yang dikonfigurasi (atau panggila
 | GET | `/api/health` | Status backend & konfigurasi |
 | GET | `/api/settings` | Baca pengaturan aktif (API key, interval scan, threshold, dll) |
 | PUT | `/api/settings` | Ubah pengaturan — tersimpan di SQLite, diterapkan langsung tanpa restart |
+| POST | `/api/settings/test-notification` | Kirim pesan uji coba ke Telegram/Discord yang aktif, untuk validasi token/webhook |
 
 ## Catatan & Keterbatasan
 

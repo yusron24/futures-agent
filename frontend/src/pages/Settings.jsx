@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getSettings, updateSettings } from '../api/client';
+import { getSettings, updateSettings, testNotification } from '../api/client';
 
 const EMPTY_FORM = {
   coingeckoApiKey: '',
@@ -9,6 +9,11 @@ const EMPTY_FORM = {
   scanIntervalMinutes: 5,
   signalScoreThreshold: 75,
   detailedCoinsLimit: 60,
+  telegramBotToken: '',
+  telegramChatId: '',
+  telegramEnabled: false,
+  discordWebhookUrl: '',
+  discordEnabled: false,
 };
 
 export default function Settings() {
@@ -16,6 +21,8 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
   const [notifPermission, setNotifPermission] = useState(
     'Notification' in window ? Notification.permission : 'unsupported'
   );
@@ -32,6 +39,11 @@ export default function Settings() {
           scanIntervalMinutes: s.scanIntervalMinutes,
           signalScoreThreshold: s.signalScoreThreshold,
           detailedCoinsLimit: s.detailedCoinsLimit,
+          telegramBotToken: s.telegramBotToken || '',
+          telegramChatId: s.telegramChatId || '',
+          telegramEnabled: Boolean(s.telegramEnabled),
+          discordWebhookUrl: s.discordWebhookUrl || '',
+          discordEnabled: Boolean(s.discordEnabled),
         })
       )
       .catch(() => setMessage({ type: 'error', text: 'Gagal memuat pengaturan dari backend.' }))
@@ -53,6 +65,19 @@ export default function Settings() {
       setMessage({ type: 'error', text: err.response?.data?.error || 'Gagal menyimpan pengaturan.' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const data = await testNotification();
+      setTestResult({ type: 'success', data: data.result });
+    } catch (err) {
+      setTestResult({ type: 'error', text: err.response?.data?.error || 'Gagal mengirim notifikasi uji coba.' });
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -164,6 +189,59 @@ export default function Settings() {
           </Field>
         </div>
 
+        <hr className="border-terminal-border" />
+        <div className="text-sm font-semibold text-terminal-text">Notifikasi Telegram &amp; Discord</div>
+        <p className="text-xs text-terminal-muted -mt-2">
+          Dikirim otomatis saat koin di watchlist melewati threshold, atau saat ada sinyal "Potensi Pergerakan
+          Besar" baru.
+        </p>
+
+        <div className="space-y-3 bg-terminal-bg border border-terminal-border rounded-lg p-4">
+          <ToggleField
+            label="Aktifkan Telegram"
+            checked={form.telegramEnabled}
+            onChange={(v) => set({ telegramEnabled: v })}
+          />
+          <Field label="Bot Token" hint="Dapatkan dari @BotFather di Telegram.">
+            <input
+              type="password"
+              autoComplete="off"
+              value={form.telegramBotToken}
+              onChange={(e) => set({ telegramBotToken: e.target.value })}
+              placeholder="123456789:AAExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              className="input"
+            />
+          </Field>
+          <Field label="Chat ID" hint="ID chat/grup tujuan pesan (boleh angka negatif untuk grup).">
+            <input
+              type="text"
+              autoComplete="off"
+              value={form.telegramChatId}
+              onChange={(e) => set({ telegramChatId: e.target.value })}
+              placeholder="123456789"
+              className="input"
+            />
+          </Field>
+        </div>
+
+        <div className="space-y-3 bg-terminal-bg border border-terminal-border rounded-lg p-4">
+          <ToggleField
+            label="Aktifkan Discord"
+            checked={form.discordEnabled}
+            onChange={(v) => set({ discordEnabled: v })}
+          />
+          <Field label="Webhook URL" hint="Channel Settings → Integrations → Webhooks di Discord.">
+            <input
+              type="password"
+              autoComplete="off"
+              value={form.discordWebhookUrl}
+              onChange={(e) => set({ discordWebhookUrl: e.target.value })}
+              placeholder="https://discord.com/api/webhooks/..."
+              className="input"
+            />
+          </Field>
+        </div>
+
         {message && (
           <div
             className={`text-xs px-3 py-2 rounded border ${
@@ -176,13 +254,42 @@ export default function Settings() {
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="px-4 py-2 text-sm font-semibold rounded bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/40 hover:bg-terminal-accent/25 disabled:opacity-50 transition-colors"
-        >
-          {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-4 py-2 text-sm font-semibold rounded bg-terminal-accent/15 text-terminal-accent border border-terminal-accent/40 hover:bg-terminal-accent/25 disabled:opacity-50 transition-colors"
+          >
+            {saving ? 'Menyimpan...' : 'Simpan Pengaturan'}
+          </button>
+          <button
+            type="button"
+            onClick={handleTestNotification}
+            disabled={testing || (!form.telegramEnabled && !form.discordEnabled)}
+            className="px-4 py-2 text-sm font-semibold rounded bg-terminal-amber/15 text-terminal-amber border border-terminal-amber/40 hover:bg-terminal-amber/25 disabled:opacity-40 transition-colors"
+          >
+            {testing ? 'Mengirim...' : 'Kirim Notifikasi Uji Coba'}
+          </button>
+        </div>
+
+        {testResult && (
+          <div
+            className={`text-xs px-3 py-2 rounded border ${
+              testResult.type === 'error'
+                ? 'bg-terminal-red/10 border-terminal-red/30 text-terminal-red'
+                : 'bg-terminal-panel border-terminal-border text-terminal-text'
+            }`}
+          >
+            {testResult.type === 'error' ? (
+              testResult.text
+            ) : (
+              <div className="space-y-1">
+                <ChannelResult label="Telegram" result={testResult.data.telegram} />
+                <ChannelResult label="Discord" result={testResult.data.discord} />
+              </div>
+            )}
+          </div>
+        )}
       </form>
 
       <div className="bg-terminal-panel border border-terminal-border rounded-lg p-5 mt-4">
@@ -215,5 +322,34 @@ function Field({ label, hint, children }) {
       {children}
       {hint && <span className="block text-[10px] text-terminal-muted mt-1">{hint}</span>}
     </label>
+  );
+}
+
+function ToggleField({ label, checked, onChange }) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-terminal-text cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-terminal-accent"
+      />
+      {label}
+    </label>
+  );
+}
+
+function ChannelResult({ label, result }) {
+  if (!result || result.skipped) {
+    return (
+      <div className="text-terminal-muted">
+        {label}: <span>dilewati (belum aktif/dikonfigurasi)</span>
+      </div>
+    );
+  }
+  return (
+    <div className={result.success ? 'text-terminal-green' : 'text-terminal-red'}>
+      {label}: {result.success ? 'terkirim ✓' : `gagal — ${result.error}`}
+    </div>
   );
 }

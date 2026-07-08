@@ -19,9 +19,16 @@ const DEFAULTS = {
   scanIntervalMinutes: parseInt(process.env.SCAN_INTERVAL_MINUTES || '5', 10),
   signalScoreThreshold: parseFloat(process.env.SIGNAL_SCORE_THRESHOLD || '75'),
   detailedCoinsLimit: parseInt(process.env.DETAILED_COINS_LIMIT || '30', 10),
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
+  telegramEnabled: process.env.TELEGRAM_ENABLED === 'true',
+  discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL || '',
+  discordEnabled: process.env.DISCORD_ENABLED === 'true',
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
 };
 
 const NUMERIC_KEYS = new Set(['scanIntervalMinutes', 'signalScoreThreshold', 'detailedCoinsLimit']);
+const BOOLEAN_KEYS = new Set(['telegramEnabled', 'discordEnabled']);
 
 const LIMITS = {
   scanIntervalMinutes: { min: 1, max: 120 },
@@ -29,12 +36,18 @@ const LIMITS = {
   detailedCoinsLimit: { min: 5, max: 250 },
 };
 
+function coerce(key, rawValue) {
+  if (NUMERIC_KEYS.has(key)) return Number(rawValue);
+  if (BOOLEAN_KEYS.has(key)) return rawValue === 'true' || rawValue === true;
+  return rawValue;
+}
+
 function getSettings() {
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const overrides = {};
   for (const row of rows) {
     if (!(row.key in DEFAULTS)) continue;
-    overrides[row.key] = NUMERIC_KEYS.has(row.key) ? Number(row.value) : row.value;
+    overrides[row.key] = coerce(row.key, row.value);
   }
   return { ...DEFAULTS, ...overrides };
 }
@@ -59,7 +72,8 @@ function updateSettings(partial) {
   db.exec('BEGIN');
   try {
     for (const [key, value] of entries) {
-      upsert.run(key, String(value));
+      const stored = BOOLEAN_KEYS.has(key) ? String(Boolean(value)) : String(value);
+      upsert.run(key, stored);
     }
     db.exec('COMMIT');
   } catch (err) {

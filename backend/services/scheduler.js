@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const db = require('../db/database');
 const { triggerScreening } = require('./screeningService');
+const { notifyCoinSignal } = require('./notificationService');
 const { getSettings } = require('../db/settingsStore');
 
 let cronTask = null;
@@ -30,6 +31,20 @@ async function runCycle() {
           );
           if (watchlistHits.length) {
             ioRef.emit('watchlist:alert', watchlistHits);
+          }
+
+          // Telegram/Discord: notify for every watchlist hit, plus every
+          // other new signal (a general "potensi pergerakan besar"
+          // detection) - deduped so a coin that's both only sends once.
+          const watchlistIds = new Set(watchlistHits.map((s) => s.id));
+          const toNotify = [
+            ...watchlistHits.map((s) => ({ coin: s, reason: 'watchlist' })),
+            ...newSignals.filter((s) => !watchlistIds.has(s.id)).map((s) => ({ coin: s, reason: 'signal' })),
+          ];
+          for (const { coin, reason } of toNotify) {
+            notifyCoinSignal(coin, { reason }).catch((err) =>
+              console.error(`[scheduler] notification failed for ${coin.id}:`, err.message)
+            );
           }
         }
       },
