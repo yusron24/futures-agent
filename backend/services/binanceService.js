@@ -67,24 +67,24 @@ async function getUniverse(limit = 150) {
   return merged.slice(0, limit);
 }
 
-/** Daily klines (OHLCV) for a symbol - source for RSI/MACD/volume-ratio/7d-change. */
-async function getDailyKlines(symbol, limit = 40) {
-  const cacheKey = `klines_d_${symbol}_${limit}`;
+/** Klines (OHLCV) for a symbol at any Binance interval - source for RSI/MACD/volume-ratio/7d-change. */
+async function getKlines(symbol, interval = '1d', limit = 40) {
+  const cacheKey = `klines_${symbol}_${interval}_${limit}`;
   const cached = cache.get(cacheKey);
   if (cached) return cached;
-  const data = await getWithRetry('/fapi/v1/klines', { params: { symbol, interval: '1d', limit } });
+  const data = await getWithRetry('/fapi/v1/klines', { params: { symbol, interval, limit } });
   cache.set(cacheKey, data, 280);
   return data;
 }
 
+/** Daily klines (OHLCV) for a symbol - source for RSI/MACD/volume-ratio/7d-change. */
+function getDailyKlines(symbol, limit = 40) {
+  return getKlines(symbol, '1d', limit);
+}
+
 /** Hourly klines for the coin-detail price chart (last N hours). */
-async function getHourlyKlines(symbol, limit = 168) {
-  const cacheKey = `klines_h_${symbol}_${limit}`;
-  const cached = cache.get(cacheKey);
-  if (cached) return cached;
-  const data = await getWithRetry('/fapi/v1/klines', { params: { symbol, interval: '1h', limit } });
-  cache.set(cacheKey, data, 280);
-  return data;
+function getHourlyKlines(symbol, limit = 168) {
+  return getKlines(symbol, '1h', limit);
 }
 
 /** Fresh single-symbol snapshot (not from the cached top-N universe list) - used for watchlist coins outside the top ranking and the coin detail page. */
@@ -107,4 +107,4 @@ async function getSymbolSnapshot(symbol) {
   };
 }
 
-module.exports = { getUniverse, getDailyKlines, getHourlyKlines, getSymbolSnapshot };
+module.exports = { getUniverse, getKlines, getDailyKlines, getHourlyKlines, getSymbolSnapshot };

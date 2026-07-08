@@ -24,10 +24,12 @@ const DEFAULTS = {
   discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL || '',
   discordEnabled: process.env.DISCORD_ENABLED === 'true',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  proxyUrl: process.env.PROXY_URL || '',
+  proxyEnabled: process.env.PROXY_ENABLED === 'true',
 };
 
 const NUMERIC_KEYS = new Set(['scanIntervalMinutes', 'signalScoreThreshold', 'detailedCoinsLimit']);
-const BOOLEAN_KEYS = new Set(['telegramEnabled', 'discordEnabled']);
+const BOOLEAN_KEYS = new Set(['telegramEnabled', 'discordEnabled', 'proxyEnabled']);
 
 const LIMITS = {
   scanIntervalMinutes: { min: 1, max: 120 },

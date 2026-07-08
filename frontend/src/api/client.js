@@ -59,8 +59,8 @@ export async function testNotification() {
   return data;
 }
 
-export async function getRsiScreener() {
-  const { data } = await client.get('/api/rsi-screener');
+export async function getRsiScreener(interval) {
+  const { data } = await client.get('/api/rsi-screener', { params: interval ? { interval } : {} });
   return data;
 }
 

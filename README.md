@@ -73,12 +73,13 @@ Aplikasi ini mengambil data langsung dari **Binance Futures API publik** (`fapi.
 | `FRONTEND_URL` | URL publik frontend, dipakai untuk link "lihat detail" di notifikasi Telegram/Discord (default `http://localhost:5173`) |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `TELEGRAM_ENABLED` | Opsional, notifikasi Telegram — bisa juga diisi & di-toggle lewat halaman Pengaturan |
 | `DISCORD_WEBHOOK_URL` / `DISCORD_ENABLED` | Opsional, notifikasi Discord — bisa juga diisi & di-toggle lewat halaman Pengaturan |
+| `PROXY_URL` / `PROXY_ENABLED` | Opsional, proxy outbound untuk request ke Binance (format `http://user:pass@host:port`) — **jangan pernah commit nilai asli ke sini**, isi lewat `.env` lokal (sudah di-gitignore) atau halaman Pengaturan |
 
 ## Cara Kerja Screening
 
 1. Setiap `SCAN_INTERVAL_MINUTES` menit, backend mengambil semua pair USDT-M perpetual `TRADING` dari `/fapi/v1/exchangeInfo` + `/fapi/v1/ticker/24hr` (1 request untuk seluruh pasar), lalu diurutkan berdasarkan volume 24h dan diambil `DETAILED_COINS_LIMIT` teratas — stablecoin (USDC, BUSD, dll) difilter otomatis.
 2. **Setiap** pair di universe (bukan cuma subset) mendapat analisis penuh dari satu kali fetch kline harian (`/fapi/v1/klines`, 40 hari): RSI(14), MACD(12,26,9), rasio volume spike (volume hari ini vs rata-rata harian sebelumnya), dan perubahan 7 hari — semuanya diturunkan dari data yang sama, tanpa request tambahan per metrik.
-3. Semua request ke Binance dipacing lewat **rate limiter adaptif** (`backend/utils/binanceClient.js`): mulai cepat (~120ms antar-request), otomatis melambat kalau kena 429/418 beruntun, lalu pelan-pelan mempercepat lagi setelah serangkaian request sukses.
+3. Semua request ke Binance dipacing lewat **rate limiter adaptif** (`backend/utils/binanceClient.js`): mulai cepat (~120ms antar-request), otomatis melambat kalau kena 429/418 beruntun, lalu pelan-pelan mempercepat lagi setelah serangkaian request sukses. Kalau IP Anda tetap kena rate-limit/blokir (umum terjadi di IP mobile/shared/datacenter), aktifkan **Proxy Outbound** di halaman Pengaturan (lihat bawah) supaya semua request Binance dirutekan lewat proxy tersebut.
 4. Skor potensi 0-100 dihitung dari kombinasi berbobot: Volume Spike 25%, Momentum Harga 20%, Volatilitas 10%, RSI 10%, Sosial 10%, On-Chain 25% (lihat bawah). Bobot metrik apa pun yang datanya tidak tersedia untuk koin tersebut dialihkan secara proporsional ke metrik lain, jadi totalnya selalu 100%.
 5. Koin dengan skor ≥ threshold dicatat ke tabel `signals` di SQLite dan di-broadcast lewat WebSocket (`screening:update`, `signals:new`, `watchlist:alert`) agar dashboard & notifikasi browser update real-time.
 6. Frontend melakukan polling setiap 30 detik (bisa dimatikan) dan juga mendengarkan event WebSocket untuk refresh instan.
@@ -114,9 +115,21 @@ Setiap koin hanya mengirim satu notifikasi per siklus meski memenuhi keduanya. P
 
 Jika token/webhook salah atau ada masalah jaringan, error-nya di-catch dan dicatat di log backend (`[notification] Telegram/Discord send failed: ...`) tanpa menghentikan siklus screening atau mempengaruhi koin lain.
 
+### Proxy Outbound (mengatasi rate limit / ban IP)
+
+Kalau server Anda kena rate-limit atau diblokir Binance (sering terjadi di IP mobile, shared hosting, atau datacenter yang IP-nya dipakai banyak orang), aktifkan proxy lewat halaman **Pengaturan → Proxy Outbound**:
+
+1. Isi **Proxy URL** dengan format `http://username:password@host:port`.
+2. Centang **Aktifkan Proxy**, klik **Simpan Pengaturan** — berlaku langsung tanpa restart.
+
+Semua request ke Binance (`backend/utils/binanceClient.js`) akan dirutekan lewat proxy tersebut menggunakan [`https-proxy-agent`](https://www.npmjs.com/package/https-proxy-agent). Kredensial proxy tersimpan **hanya di database SQLite lokal Anda** (`backend/data/screener.db`, sudah di-gitignore) — tidak pernah dikirim ke tempat lain atau ikut ter-commit ke git. Kalau Anda taruh proxy URL di `.env` sebagai gantinya, pastikan file `.env` itu memang tidak pernah di-commit (sudah di-gitignore secara default di repo ini) — jangan sekali-kali menempelkan kredensial proxy ke pesan commit, kode, atau tempat publik lainnya.
+
 ### RSI Screener
 
-Halaman terpisah (`/rsi-screener`) yang menampilkan dua daftar: koin **oversold** (RSI < 30, secara historis berpotensi rebound) dan **overbought** (RSI > 70, berpotensi koreksi) — murni indikator teknikal, bukan sinyal beli/jual. Karena Binance memungkinkan seluruh universe dianalisis penuh setiap siklus screening utama, halaman ini cukup membaca hasil siklus terakhir (tidak ada lagi pemindaian bergilir independen seperti versi CoinGecko sebelumnya) — datanya selalu seaktual dashboard.
+Halaman terpisah (`/rsi-screener`) yang menampilkan dua daftar: koin **oversold** (RSI < 30, secara historis berpotensi rebound) dan **overbought** (RSI > 70, berpotensi koreksi) — murni indikator teknikal, bukan sinyal beli/jual. Pilih timeframe RSI-14 lewat tombol di atas tabel: **15m, 1H, 4H, 1D, 1W**.
+
+- Timeframe **1D** gratis — hasilnya langsung diambil dari siklus screening utama yang sudah menghitung RSI harian untuk seluruh universe, tanpa request tambahan ke Binance.
+- Timeframe lain (**15m/1H/4H/1W**) memicu pemindaian kline khusus untuk seluruh universe pada interval tersebut, di-cache sebentar per-timeframe (30 detik untuk 15m, sampai 15 menit untuk 1W) supaya polling 30 detik di halaman ini tidak memicu fetch ulang ke Binance setiap kali.
 
 ## Endpoint API
 
@@ -128,7 +141,7 @@ Halaman terpisah (`/rsi-screener`) yang menampilkan dua daftar: koin **oversold*
 | POST | `/api/watchlist` | Tambah koin ke watchlist `{ coinId, symbol, name, alertThreshold }` |
 | DELETE | `/api/watchlist/:coinId` | Hapus dari watchlist |
 | GET | `/api/signals` | Riwayat sinyal tersimpan (`limit`, `coinId`) |
-| GET | `/api/rsi-screener` | Koin oversold (RSI<30) / overbought (RSI>70) dari siklus screening terakhir |
+| GET | `/api/rsi-screener` | Koin oversold (RSI<30) / overbought (RSI>70). Query: `interval` (`15m`\|`1h`\|`4h`\|`1d`\|`1w`, default `1d`) |
 | GET | `/api/health` | Status backend & konfigurasi |
 | GET | `/api/settings` | Baca pengaturan aktif (interval scan, threshold, API key opsional, dll) |
 | PUT | `/api/settings` | Ubah pengaturan — tersimpan di SQLite, diterapkan langsung tanpa restart |

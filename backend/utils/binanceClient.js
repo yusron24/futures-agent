@@ -1,10 +1,39 @@
 const axios = require('axios');
+const { HttpsProxyAgent } = require('https-proxy-agent');
+const { getSettings } = require('../db/settingsStore');
 
 const BASE_URL = process.env.BINANCE_FUTURES_API_URL || 'https://fapi.binance.com';
 
 const client = axios.create({ baseURL: BASE_URL, timeout: 15000 });
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ---------------------------------------------------------------------
+// Optional outbound proxy - useful when Binance rate-limits or blocks
+// the server's IP (common on shared/mobile/datacenter IPs). Configured
+// via Settings (proxyUrl/proxyEnabled), format: http://user:pass@host:port.
+// The agent is rebuilt only when the URL actually changes, so normal
+// requests don't pay agent-construction cost every call.
+// ---------------------------------------------------------------------
+let cachedAgent = null;
+let cachedProxyUrl = null;
+
+function getProxyAgent() {
+  const { proxyEnabled, proxyUrl } = getSettings();
+  if (!proxyEnabled || !proxyUrl) return null;
+
+  if (proxyUrl !== cachedProxyUrl) {
+    try {
+      cachedAgent = new HttpsProxyAgent(proxyUrl);
+      cachedProxyUrl = proxyUrl;
+    } catch (err) {
+      console.error(`[binance] invalid proxy URL, ignoring: ${err.message}`);
+      cachedAgent = null;
+      cachedProxyUrl = null;
+    }
+  }
+  return cachedAgent;
+}
 
 // ---------------------------------------------------------------------
 // Binance's public market-data endpoints (klines, ticker, exchangeInfo)
@@ -47,7 +76,8 @@ function reportSuccess() {
 
 /**
  * GET with retry/backoff for Binance rate limiting (429/418) and
- * transient network errors, paced through a shared adaptive limiter.
+ * transient network errors, paced through a shared adaptive limiter and
+ * routed through the configured proxy (if any).
  */
 async function getWithRetry(url, config = {}, retries = 3) {
   let attempt = 0;
@@ -55,7 +85,9 @@ async function getWithRetry(url, config = {}, retries = 3) {
   while (true) {
     await waitForSlot();
     try {
-      const res = await client.get(url, config);
+      const agent = getProxyAgent();
+      const requestConfig = agent ? { ...config, httpsAgent: agent, proxy: false } : config;
+      const res = await client.get(url, requestConfig);
       reportSuccess();
       return res.data;
     } catch (err) {

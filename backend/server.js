@@ -35,6 +35,7 @@ app.get('/api/health', (req, res) => {
     scanIntervalMinutes: settings.scanIntervalMinutes,
     detailedCoinsLimit: settings.detailedCoinsLimit,
     socialDataConfigured: isSocialConfigured(),
+    proxyConfigured: Boolean(settings.proxyEnabled && settings.proxyUrl),
     dataSource: 'binance-futures',
   });
 });

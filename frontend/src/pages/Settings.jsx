@@ -13,6 +13,8 @@ const EMPTY_FORM = {
   telegramEnabled: false,
   discordWebhookUrl: '',
   discordEnabled: false,
+  proxyUrl: '',
+  proxyEnabled: false,
 };
 
 export default function Settings() {
@@ -42,6 +44,8 @@ export default function Settings() {
           telegramEnabled: Boolean(s.telegramEnabled),
           discordWebhookUrl: s.discordWebhookUrl || '',
           discordEnabled: Boolean(s.discordEnabled),
+          proxyUrl: s.proxyUrl || '',
+          proxyEnabled: Boolean(s.proxyEnabled),
         })
       )
       .catch(() => setMessage({ type: 'error', text: 'Gagal memuat pengaturan dari backend.' }))
@@ -171,6 +175,30 @@ export default function Settings() {
               max={300}
               value={form.detailedCoinsLimit}
               onChange={(e) => set({ detailedCoinsLimit: e.target.value })}
+              className="input"
+            />
+          </Field>
+        </div>
+
+        <hr className="border-terminal-border" />
+        <div className="text-sm font-semibold text-terminal-text">Proxy Outbound</div>
+        <p className="text-xs text-terminal-muted -mt-2">
+          Opsional. Rutekan semua request ke Binance lewat proxy — berguna kalau IP server Anda kena rate-limit
+          atau diblokir Binance (sering terjadi di IP mobile/shared/datacenter).
+        </p>
+        <div className="space-y-3 bg-terminal-bg border border-terminal-border rounded-lg p-4">
+          <ToggleField
+            label="Aktifkan Proxy"
+            checked={form.proxyEnabled}
+            onChange={(v) => set({ proxyEnabled: v })}
+          />
+          <Field label="Proxy URL" hint="Format: http://username:password@host:port. Kredensial hanya tersimpan di server Anda (SQLite lokal), tidak pernah dikirim ke tempat lain.">
+            <input
+              type="password"
+              autoComplete="off"
+              value={form.proxyUrl}
+              onChange={(e) => set({ proxyUrl: e.target.value })}
+              placeholder="http://username:password@host:port"
               className="input"
             />
           </Field>

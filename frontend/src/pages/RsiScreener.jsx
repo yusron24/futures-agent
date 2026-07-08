@@ -7,15 +7,24 @@ import useInterval from '../hooks/useInterval';
 import { formatPrice, formatPercent, changeColor, timeAgo } from '../utils/format';
 
 const POLL_MS = 30000;
+const TIMEFRAMES = [
+  { value: '15m', label: '15m' },
+  { value: '1h', label: '1H' },
+  { value: '4h', label: '4H' },
+  { value: '1d', label: '1D' },
+  { value: '1w', label: '1W' },
+];
 
 export default function RsiScreener() {
+  const [interval, setInterval_] = useState('1d');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (tf) => {
+    setLoading(true);
     try {
-      const res = await getRsiScreener();
+      const res = await getRsiScreener(tf);
       setData(res);
       setError(null);
     } catch (err) {
@@ -26,10 +35,10 @@ export default function RsiScreener() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    load(interval);
+  }, [interval, load]);
 
-  useInterval(load, POLL_MS);
+  useInterval(() => load(interval), POLL_MS);
 
   return (
     <div>
@@ -38,14 +47,32 @@ export default function RsiScreener() {
       </div>
       <p className="text-xs text-terminal-muted mb-4">
         Pair Binance Futures yang sedang oversold (RSI &lt; 30, berpotensi rebound) atau overbought (RSI &gt; 70,
-        berpotensi koreksi) — murni indikator teknikal, bukan sinyal beli/jual. Dihitung dari seluruh universe
-        screening setiap siklus (tidak ada lagi pemindaian bergilir terpisah).
+        berpotensi koreksi) — murni indikator teknikal, bukan sinyal beli/jual. Pilih timeframe RSI-14 di bawah.
       </p>
+
+      <div className="flex items-center gap-2 mb-4">
+        {TIMEFRAMES.map((tf) => (
+          <button
+            key={tf.value}
+            onClick={() => setInterval_(tf.value)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded border transition-colors ${
+              interval === tf.value
+                ? 'bg-terminal-accent/15 text-terminal-accent border-terminal-accent/40'
+                : 'text-terminal-muted border-terminal-border hover:text-terminal-text hover:bg-white/5'
+            }`}
+          >
+            {tf.label}
+          </button>
+        ))}
+      </div>
 
       {data && (
         <div className="flex flex-wrap gap-4 text-xs text-terminal-muted mb-4 px-4 py-3 bg-terminal-panel border border-terminal-border rounded-lg">
           <span>
             Dianalisis: <b className="text-terminal-text">{data.scannedCount}</b> / {data.poolSize} pair
+          </span>
+          <span>
+            Timeframe: <b className="text-terminal-text">{data.interval}</b>
           </span>
           <span>Update terakhir: {data.updatedAt ? timeAgo(data.updatedAt) : 'belum ada'}</span>
         </div>
