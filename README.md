@@ -1,6 +1,6 @@
 # Altcoin Screener
 
-Aplikasi full-stack untuk mendeteksi dan menyaring altcoin dengan potensi pergerakan harga besar, menggunakan data publik CoinGecko. Backend Express + SQLite + Socket.IO, frontend React (Vite) + Tailwind CSS dengan tema gelap ala terminal trading.
+Aplikasi full-stack untuk mendeteksi dan menyaring altcoin dengan potensi pergerakan harga besar, menggunakan data publik **Binance USDT-M Futures**. Backend Express + SQLite + Socket.IO, frontend React (Vite) + Tailwind CSS dengan tema gelap ala terminal trading.
 
 ## Struktur Proyek
 
@@ -19,7 +19,7 @@ frontend/   React (Vite) + Tailwind + Recharts, dashboard screening real-time
 
 ```bash
 cd backend
-cp .env.example .env   # sesuaikan API key jika ada, defaultnya sudah bisa langsung jalan
+cp .env.example .env   # defaultnya sudah bisa langsung jalan, tidak perlu API key
 npm install
 npm run dev             # nodemon, restart otomatis saat kode berubah
 # atau: npm start
@@ -42,23 +42,33 @@ Buka `http://localhost:5173` di browser.
 
 > Pastikan backend sudah berjalan lebih dulu agar dashboard bisa mengambil data.
 
+## Sumber Data: Binance USDT-M Futures
+
+Aplikasi ini mengambil data langsung dari **Binance Futures API publik** (`fapi.binance.com`) — tidak perlu API key untuk data pasar (harga, volume, kline), dan rate limit-nya jauh lebih longgar dibanding CoinGecko free tier (2400 weight/menit vs realistanya cuma 5-15 request/menit di CoinGecko). Konsekuensinya, "universe" screening di sini adalah **pair USDT-M perpetual yang terdaftar di Binance Futures** (sekitar 300+ pair), bukan seluruh pasar kripto global. Beberapa fitur yang sebelumnya ada dari CoinGecko sengaja dihapus karena Binance tidak menyediakannya:
+
+- ❌ Market cap & ranking market cap — diganti **ranking berdasarkan volume 24h** (proxy ukuran/likuiditas terdekat yang tersedia).
+- ❌ Kategori/sektor (DeFi, Layer 1, Meme, dll) — filter kategori dihapus dari Dashboard.
+- ❌ Logo, deskripsi, ATH/ATL koin — logo diganti avatar inisial berwarna otomatis; deskripsi & ATH/ATL tidak ditampilkan.
+- ❌ Perubahan harga 1 jam — Binance tidak menyediakannya di endpoint ticker tanpa request tambahan per pair, jadi momentum sekarang dihitung dari perubahan 24h + 7d saja (7d dihitung gratis dari kline harian yang sudah diambil untuk RSI/MACD, tanpa request tambahan).
+- ✅ Deteksi "baru listing" jadi **lebih akurat** — pakai field `onboardDate` asli dari Binance, bukan lagi heuristik tanggal all-time-low seperti versi CoinGecko.
+- ✅ Karena rate limit Binance jauh lebih longgar, **seluruh universe screening** (bukan cuma subset ~30 koin) mendapat analisis penuh (RSI/MACD/volume-spike) setiap siklus.
+
 ## Konfigurasi (.env backend)
 
-`.env` hanya dipakai sebagai **nilai default awal**. Setelah backend jalan, buka halaman **Pengaturan** di `http://localhost:5173/settings` untuk mengubah API key, interval scan, threshold sinyal, dan jumlah koin detail per siklus langsung dari browser — tersimpan di SQLite dan diterapkan seketika tanpa perlu edit `.env` atau restart backend.
+`.env` hanya dipakai sebagai **nilai default awal**. Setelah backend jalan, buka halaman **Pengaturan** di `http://localhost:5173/settings` untuk mengubah interval scan, threshold sinyal, ukuran universe screening, dan API key opsional langsung dari browser — tersimpan di SQLite dan diterapkan seketika tanpa perlu edit `.env` atau restart backend.
 
 | Variable | Keterangan |
 |---|---|
 | `PORT` | Port backend (default 5000) |
-| `COINGECKO_API_URL` | Base URL CoinGecko (default tier gratis) |
-| `COINGECKO_API_KEY` | Opsional, untuk CoinGecko Pro/Demo API key — bisa juga diisi lewat halaman Pengaturan |
-| `LUNARCRUSH_API_KEY` / `SOCIAL_API_KEY` | Opsional, mengaktifkan skor momentum sosial. Tanpa key, skor sosial memakai nilai netral placeholder (tetap dihitung dalam skor total, tidak mempengaruhi ranking secara bias) — bisa juga diisi lewat halaman Pengaturan |
+| `BINANCE_FUTURES_API_URL` | Base URL Binance Futures API (default `https://fapi.binance.com`) |
+| `BINANCE_FETCH_DELAY_MS` | Jeda awal (ms) antar-request ke Binance, auto-adaptif (lihat bawah) — default 120 |
+| `LUNARCRUSH_API_KEY` / `SOCIAL_API_KEY` | Opsional, mengaktifkan skor momentum sosial. Tanpa key, skor sosial memakai nilai netral placeholder — bisa juga diisi lewat halaman Pengaturan |
 | `CRYPTOQUANT_API_KEY` | Opsional, exchange inflow/outflow & supply-on-exchange (BTC/ETH; dipakai sebagai proxy makro untuk altcoin lain) — bisa juga diisi lewat halaman Pengaturan |
 | `WHALE_ALERT_API_KEY` | Opsional, jumlah transaksi whale >$100k (1 jam terakhir) per koin dari [Whale Alert](https://whale-alert.io) — bisa juga diisi lewat halaman Pengaturan |
 | `GLASSNODE_API_KEY` | Dicadangkan untuk pengembangan berikutnya (belum tersambung ke endpoint live) |
-| `DETAILED_COINS_LIMIT` | Jumlah koin top-mover yang dihitung indikator detail (RSI/MACD/volume spike/on-chain) per siklus, default 60. Dibatasi agar tidak melebihi rate limit gratis CoinGecko (~10-30 request/menit) — bisa diubah lewat halaman Pengaturan |
+| `DETAILED_COINS_LIMIT` | Jumlah pair Binance teratas (berdasarkan volume 24h) yang jadi universe screening, default 150, maksimal 300 — semuanya dianalisis penuh setiap siklus — bisa diubah lewat halaman Pengaturan |
 | `SCAN_INTERVAL_MINUTES` | Interval scheduler penghitungan ulang skor (default 5 menit) — bisa diubah lewat halaman Pengaturan |
 | `SIGNAL_SCORE_THRESHOLD` | Skor minimum agar sebuah koin dicatat sebagai "sinyal" ke riwayat (default 75) — bisa diubah lewat halaman Pengaturan |
-| `RSI_SCREENER_COINS_LIMIT` | Jumlah koin top-market-cap yang dipindai bergilir untuk halaman RSI Screener (default 100) — bisa diubah lewat halaman Pengaturan |
 | `CORS_ORIGIN` | Origin frontend yang diizinkan (default `http://localhost:5173`) |
 | `FRONTEND_URL` | URL publik frontend, dipakai untuk link "lihat detail" di notifikasi Telegram/Discord (default `http://localhost:5173`) |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` / `TELEGRAM_ENABLED` | Opsional, notifikasi Telegram — bisa juga diisi & di-toggle lewat halaman Pengaturan |
@@ -66,9 +76,9 @@ Buka `http://localhost:5173` di browser.
 
 ## Cara Kerja Screening
 
-1. Setiap `SCAN_INTERVAL_MINUTES` menit, backend mengambil 250 koin teratas dari `/coins/markets` CoinGecko (stablecoin & wrapped token difilter otomatis).
-2. Untuk semua koin dihitung metrik "murah" (tanpa request tambahan): perubahan harga 1h/24h/7d, volatilitas (high-low 24h vs harga rata-rata), dan heuristik "baru listing" (berdasarkan `atl_date`).
-3. ~30 koin dengan pergerakan paling signifikan (plus semua koin di watchlist) mendapat analisis mendalam: RSI(14) & MACD(12,26,9) dihitung dari histori harga 30 hari, rasio volume spike (volume hari ini vs rata-rata harian sebelumnya), dan metrik on-chain (lihat bawah) — dilakukan sekuensial melalui **rate limiter adaptif terpusat** (`backend/utils/httpClient.js`) yang dipakai bersama oleh semua fitur (screening utama, RSI Screener, detail koin). Limiter ini memulai dengan jeda ~4 detik antar-request, otomatis memperlambat diri (hingga maks 20 detik) saat kena HTTP 429 beruntun, dan pelan-pelan mempercepat lagi setelah serangkaian request sukses — jadi backend menyesuaikan diri ke batas rate limit riil alih-alih memakai angka tetap yang bisa salah tebak. Kalau masih sering kena 429, cara paling efektif adalah pasang [CoinGecko API key gratis](https://www.coingecko.com/en/developers/dashboard) (Demo plan, tanpa kartu kredit) lewat halaman Pengaturan — ini memberi kuota khusus yang tidak berbagi dengan pengguna anonim lain di jaringan/IP Anda.
+1. Setiap `SCAN_INTERVAL_MINUTES` menit, backend mengambil semua pair USDT-M perpetual `TRADING` dari `/fapi/v1/exchangeInfo` + `/fapi/v1/ticker/24hr` (1 request untuk seluruh pasar), lalu diurutkan berdasarkan volume 24h dan diambil `DETAILED_COINS_LIMIT` teratas — stablecoin (USDC, BUSD, dll) difilter otomatis.
+2. **Setiap** pair di universe (bukan cuma subset) mendapat analisis penuh dari satu kali fetch kline harian (`/fapi/v1/klines`, 40 hari): RSI(14), MACD(12,26,9), rasio volume spike (volume hari ini vs rata-rata harian sebelumnya), dan perubahan 7 hari — semuanya diturunkan dari data yang sama, tanpa request tambahan per metrik.
+3. Semua request ke Binance dipacing lewat **rate limiter adaptif** (`backend/utils/binanceClient.js`): mulai cepat (~120ms antar-request), otomatis melambat kalau kena 429/418 beruntun, lalu pelan-pelan mempercepat lagi setelah serangkaian request sukses.
 4. Skor potensi 0-100 dihitung dari kombinasi berbobot: Volume Spike 25%, Momentum Harga 20%, Volatilitas 10%, RSI 10%, Sosial 10%, On-Chain 25% (lihat bawah). Bobot metrik apa pun yang datanya tidak tersedia untuk koin tersebut dialihkan secara proporsional ke metrik lain, jadi totalnya selalu 100%.
 5. Koin dengan skor ≥ threshold dicatat ke tabel `signals` di SQLite dan di-broadcast lewat WebSocket (`screening:update`, `signals:new`, `watchlist:alert`) agar dashboard & notifikasi browser update real-time.
 6. Frontend melakukan polling setiap 30 detik (bisa dimatikan) dan juga mendengarkan event WebSocket untuk refresh instan.
@@ -90,7 +100,7 @@ Jika tidak ada API key CryptoQuant/Whale Alert yang dikonfigurasi (atau panggila
 - koin di **watchlist** mencapai skor ≥ threshold alert-nya masing-masing, atau
 - koin apa pun mencapai skor ≥ `SIGNAL_SCORE_THRESHOLD` (sinyal "Potensi Pergerakan Besar" baru, dicatat ke `signals`).
 
-Setiap koin hanya mengirim satu notifikasi per siklus meski memenuhi keduanya. Pesan berisi nama, simbol, skor, perubahan harga 24h, volume spike, RSI, dan link ke halaman detail (`FRONTEND_URL`). Aktifkan dan isi kredensialnya lewat halaman **Pengaturan** (tersimpan di SQLite, langsung berlaku tanpa restart), lalu pakai tombol **Kirim Notifikasi Uji Coba** untuk memastikan token/webhook-nya valid — hasil per-channel (berhasil/gagal beserta alasannya) langsung ditampilkan.
+Setiap koin hanya mengirim satu notifikasi per siklus meski memenuhi keduanya. Pesan berisi simbol, skor, perubahan harga 24h, volume spike, RSI, dan link ke halaman detail (`FRONTEND_URL`). Aktifkan dan isi kredensialnya lewat halaman **Pengaturan** (tersimpan di SQLite, langsung berlaku tanpa restart), lalu pakai tombol **Kirim Notifikasi Uji Coba** untuk memastikan token/webhook-nya valid — hasil per-channel (berhasil/gagal beserta alasannya) langsung ditampilkan.
 
 **Cara mendapatkan Telegram Bot Token & Chat ID:**
 1. Chat [@BotFather](https://t.me/BotFather) di Telegram, kirim `/newbot`, ikuti instruksinya → dapat **Bot Token** (format `123456789:AA...`).
@@ -106,36 +116,27 @@ Jika token/webhook salah atau ada masalah jaringan, error-nya di-catch dan dicat
 
 ### RSI Screener
 
-Halaman terpisah (`/rsi-screener`) yang menampilkan dua daftar: koin **oversold** (RSI < 30, secara historis berpotensi rebound) dan **overbought** (RSI > 70, berpotensi koreksi) — murni indikator teknikal, bukan sinyal beli/jual.
-
-RSI di sini dihitung oleh `backend/services/rsiScreenerService.js`, sebuah proses **pemindaian bergilir independen** yang berjalan di latar belakang, terpisah dari siklus screening utama:
-
-- Mengambil pool `RSI_SCREENER_COINS_LIMIT` koin teratas berdasarkan market cap (default 100, maksimal 250).
-- Memproses 5 koin setiap ~20 detik secara bergilir (RSI 14-hari dari histori 30 hari), sehingga satu putaran penuh untuk pool 100 koin butuh sekitar 7 menit, atau ~17 menit untuk 250 koin.
-- **Otomatis berhenti sepenuhnya** saat siklus screening utama (5 menit) sedang berjalan, supaya keduanya tidak berebut kuota rate-limit CoinGecko secara bersamaan.
-- Memperbesar `RSI_SCREENER_COINS_LIMIT` hanya memperlama waktu satu putaran penuh, bukan menambah beban request per detik — aman untuk tier gratis, tapi butuh CoinGecko API key kalau ingin cakupan luas + putaran cepat sekaligus.
-
-Halaman ini polling setiap 30 detik dan menampilkan progres pemindaian (jumlah koin yang sudah kena giliran vs ukuran pool, jumlah putaran penuh yang selesai) supaya jelas datanya belum tentu real-time untuk seluruh pool.
+Halaman terpisah (`/rsi-screener`) yang menampilkan dua daftar: koin **oversold** (RSI < 30, secara historis berpotensi rebound) dan **overbought** (RSI > 70, berpotensi koreksi) — murni indikator teknikal, bukan sinyal beli/jual. Karena Binance memungkinkan seluruh universe dianalisis penuh setiap siklus screening utama, halaman ini cukup membaca hasil siklus terakhir (tidak ada lagi pemindaian bergilir independen seperti versi CoinGecko sebelumnya) — datanya selalu seaktual dashboard.
 
 ## Endpoint API
 
 | Method | Path | Keterangan |
 |---|---|---|
-| GET | `/api/coins/screening` | Daftar koin hasil screening + skor. Query: `minMarketCap`, `newOnly`, `category`, `minScore`, `refresh=true` |
-| GET | `/api/coins/:id` | Detail koin + chart 7 hari + indikator |
+| GET | `/api/coins/screening` | Daftar koin hasil screening + skor. Query: `minVolume24h`, `newOnly`, `minScore`, `refresh=true` |
+| GET | `/api/coins/:id` | Detail pair (mis. `BTCUSDT`) + chart 7 hari + indikator |
 | GET | `/api/watchlist` | Daftar watchlist |
 | POST | `/api/watchlist` | Tambah koin ke watchlist `{ coinId, symbol, name, alertThreshold }` |
 | DELETE | `/api/watchlist/:coinId` | Hapus dari watchlist |
 | GET | `/api/signals` | Riwayat sinyal tersimpan (`limit`, `coinId`) |
-| GET | `/api/categories` | Daftar kategori/sektor koin |
-| GET | `/api/rsi-screener` | Koin oversold (RSI<30) / overbought (RSI>70) dari pool yang sudah dipindai bergilir |
+| GET | `/api/rsi-screener` | Koin oversold (RSI<30) / overbought (RSI>70) dari siklus screening terakhir |
 | GET | `/api/health` | Status backend & konfigurasi |
-| GET | `/api/settings` | Baca pengaturan aktif (API key, interval scan, threshold, dll) |
+| GET | `/api/settings` | Baca pengaturan aktif (interval scan, threshold, API key opsional, dll) |
 | PUT | `/api/settings` | Ubah pengaturan — tersimpan di SQLite, diterapkan langsung tanpa restart |
 | POST | `/api/settings/test-notification` | Kirim pesan uji coba ke Telegram/Discord yang aktif, untuk validasi token/webhook |
 
 ## Catatan & Keterbatasan
 
-- CoinGecko free tier membatasi rate limit; itulah kenapa indikator detail (RSI/MACD/volume spike) hanya dihitung untuk subset top-mover per siklus, bukan seluruh 250 koin sekaligus. Koin lain tetap tampil dengan skor berbasis metrik murah dan placeholder netral untuk metrik yang belum dihitung (ditandai `~` di tabel dashboard).
-- Deteksi "koin baru listing" adalah heuristik berbasis tanggal all-time-low, karena CoinGecko tidak menyediakan tanggal listing langsung di endpoint publik.
+- Universe screening terbatas pada pair yang terdaftar di **Binance USDT-M Futures** (~300+ pair) — altcoin yang tidak listing di Binance Futures tidak akan muncul.
+- `id` koin di seluruh aplikasi (URL detail, watchlist, riwayat sinyal) sekarang adalah **simbol pair Binance** (mis. `BTCUSDT`), bukan lagi slug CoinGecko (mis. `bitcoin`). Watchlist/riwayat sinyal lama dari sebelum migrasi ini tidak akan cocok lagi dengan data baru.
+- Deteksi "koin baru listing" memakai field `onboardDate` asli dari Binance — akurat, bukan heuristik.
 - Aplikasi ini murni alat bantu screening, bukan saran finansial.

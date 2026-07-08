@@ -1,37 +1,21 @@
-export default function FilterBar({ filters, onChange, categories, onRefresh, loading, autoRefresh, onToggleAutoRefresh }) {
+export default function FilterBar({ filters, onChange, onRefresh, loading, autoRefresh, onToggleAutoRefresh }) {
   const set = (patch) => onChange({ ...filters, ...patch });
 
   return (
     <div className="flex flex-wrap items-center gap-3 p-4 bg-terminal-panel border border-terminal-border rounded-lg mb-4">
       <div className="flex items-center gap-2">
-        <label className="text-xs text-terminal-muted">Min Market Cap</label>
+        <label className="text-xs text-terminal-muted">Min Volume 24h</label>
         <select
-          value={filters.minMarketCap}
-          onChange={(e) => set({ minMarketCap: e.target.value })}
+          value={filters.minVolume24h}
+          onChange={(e) => set({ minVolume24h: e.target.value })}
           className="bg-terminal-bg border border-terminal-border rounded px-2 py-1.5 text-xs text-terminal-text"
         >
           <option value="0">Semua</option>
-          <option value="10000000">≥ $10M</option>
-          <option value="50000000">≥ $50M</option>
-          <option value="100000000">≥ $100M</option>
-          <option value="500000000">≥ $500M</option>
-          <option value="1000000000">≥ $1B</option>
-        </select>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <label className="text-xs text-terminal-muted">Kategori</label>
-        <select
-          value={filters.category}
-          onChange={(e) => set({ category: e.target.value })}
-          className="bg-terminal-bg border border-terminal-border rounded px-2 py-1.5 text-xs text-terminal-text max-w-[160px]"
-        >
-          <option value="">Semua Kategori</option>
-          {categories.map((c) => (
-            <option key={c.category_id} value={c.category_id}>
-              {c.name}
-            </option>
-          ))}
+          <option value="1000000">≥ $1Jt</option>
+          <option value="10000000">≥ $10Jt</option>
+          <option value="50000000">≥ $50Jt</option>
+          <option value="100000000">≥ $100Jt</option>
+          <option value="500000000">≥ $500Jt</option>
         </select>
       </div>
 
@@ -42,7 +26,7 @@ export default function FilterBar({ filters, onChange, categories, onRefresh, lo
           onChange={(e) => set({ newOnly: e.target.checked })}
           className="accent-terminal-accent"
         />
-        Baru listing (&lt;30 hari)
+        Baru listing di Binance (&lt;30 hari)
       </label>
 
       <div className="ml-auto flex items-center gap-3">

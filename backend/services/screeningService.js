@@ -1,7 +1,6 @@
 const db = require('../db/database');
-const coingecko = require('./coingeckoService');
-const { getTopCoins, getCoinsByCategory } = coingecko;
-const { calculateRSI, calculateMACD, calculateVolatility, toDailySeries } = require('./indicators');
+const binance = require('./binanceService');
+const { calculateRSI, calculateMACD, calculateVolatility } = require('./indicators');
 const { computeScore } = require('./scoringService');
 const { getSocialMomentum, isSocialConfigured } = require('./socialService');
 const { getOnchainMetrics } = require('./onchainService');
@@ -18,127 +17,6 @@ function getWatchlistCoinIds() {
   return new Set(rows.map((r) => r.coin_id));
 }
 
-/** Cheap metrics available directly from the /coins/markets payload - no extra API calls. */
-function buildQuickMetrics(coin) {
-  const change1h = coin.price_change_percentage_1h_in_currency ?? 0;
-  const change24h = coin.price_change_percentage_24h_in_currency ?? coin.price_change_percentage_24h ?? 0;
-  const change7d = coin.price_change_percentage_7d_in_currency ?? 0;
-  const avgPrice = ((coin.high_24h || coin.current_price) + (coin.low_24h || coin.current_price)) / 2;
-  const volatilityPct = calculateVolatility(coin.high_24h || coin.current_price, coin.low_24h || coin.current_price, avgPrice);
-
-  // Heuristic: a very recent all-time-low date usually means the coin has
-  // little trading history yet (i.e. it's a fresh listing). Not perfect,
-  // but it's the only "recency" signal CoinGecko's markets endpoint gives
-  // us for free (no extra API calls needed).
-  let isNew = false;
-  if (coin.atl_date) {
-    const daysSinceAtl = (Date.now() - new Date(coin.atl_date).getTime()) / 86400000;
-    isNew = daysSinceAtl <= NEW_LISTING_DAYS;
-  }
-
-  const candidateHeuristic = Math.abs(change1h) * 3 + Math.abs(change24h) + volatilityPct;
-
-  return {
-    id: coin.id,
-    symbol: (coin.symbol || '').toUpperCase(),
-    name: coin.name,
-    image: coin.image,
-    price: coin.current_price,
-    marketCap: coin.market_cap,
-    marketCapRank: coin.market_cap_rank,
-    volume24h: coin.total_volume,
-    high24h: coin.high_24h,
-    low24h: coin.low_24h,
-    change1h,
-    change24h,
-    change7d,
-    volatilityPct,
-    isNew,
-    _candidateHeuristic: candidateHeuristic,
-  };
-}
-
-/** Expensive metrics that require an extra CoinGecko call (historical chart) + optional social lookup. */
-async function fetchDetailedMetrics(quick) {
-  try {
-    const chart = await coingecko.getCoinMarketChart(quick.id, 30);
-    const dailyCloses = toDailySeries(chart.prices || []);
-    const dailyVolumes = toDailySeries(chart.total_volumes || []);
-
-    const rsi = calculateRSI(dailyCloses, 14);
-    const macd = calculateMACD(dailyCloses, 12, 26, 9);
-
-    let volumeRatio = null;
-    if (dailyVolumes.length >= 2) {
-      const latest = dailyVolumes[dailyVolumes.length - 1];
-      const prior = dailyVolumes.slice(0, -1);
-      const avgPrior = prior.reduce((a, b) => a + b, 0) / prior.length;
-      volumeRatio = avgPrior > 0 ? latest / avgPrior : null;
-    }
-
-    let social = null;
-    if (isSocialConfigured()) {
-      social = await getSocialMomentum(quick.symbol);
-    }
-
-    const onchain = await getOnchainMetrics(quick.id, quick.symbol);
-
-    return {
-      rsi,
-      macdHistogram: macd ? macd.histogram : null,
-      macd,
-      volumeRatio,
-      social,
-      onchain,
-      detailed: true,
-    };
-  } catch (err) {
-    console.warn(`[screening] detailed metrics failed for ${quick.id}: ${err.message}`);
-    return { rsi: null, macdHistogram: null, macd: null, volumeRatio: null, social: null, onchain: null, detailed: false };
-  }
-}
-
-function finalizeCoin(quick, detail) {
-  const metrics = {
-    change1h: quick.change1h,
-    change24h: quick.change24h,
-    change7d: quick.change7d,
-    volatilityPct: quick.volatilityPct,
-    rsi: detail?.rsi ?? null,
-    volumeRatio: detail?.volumeRatio ?? null,
-    social: detail?.social ?? null,
-    onchain: detail?.onchain ?? null,
-  };
-  const { total, breakdown, weights } = computeScore(metrics);
-
-  return {
-    id: quick.id,
-    symbol: quick.symbol,
-    name: quick.name,
-    image: quick.image,
-    price: quick.price,
-    marketCap: quick.marketCap,
-    marketCapRank: quick.marketCapRank,
-    volume24h: quick.volume24h,
-    change1h: round(quick.change1h),
-    change24h: round(quick.change24h),
-    change7d: round(quick.change7d),
-    volatilityPct: round(quick.volatilityPct),
-    isNew: quick.isNew,
-    rsi: detail?.rsi != null ? round(detail.rsi) : null,
-    macdHistogram: detail?.macdHistogram != null ? round(detail.macdHistogram, 6) : null,
-    volumeRatio: detail?.volumeRatio != null ? round(detail.volumeRatio) : null,
-    social: detail?.social || null,
-    socialAvailable: Boolean(detail?.social?.available),
-    onchain: detail?.onchain || null,
-    onchainAvailable: Boolean(detail?.onchain?.available),
-    detailed: Boolean(detail?.detailed),
-    score: total,
-    scoreBreakdown: breakdown,
-    scoreWeights: weights,
-  };
-}
-
 function round(n, digits = 2) {
   if (n == null || Number.isNaN(n)) return null;
   const factor = 10 ** digits;
@@ -146,34 +24,135 @@ function round(n, digits = 2) {
 }
 
 /**
- * Runs the full screening pipeline:
- *  1. fetch top coins (or a category's coins)
- *  2. compute cheap metrics for all of them
- *  3. pick the top movers (+ any watchlist coins) for expensive, detailed
- *     indicator analysis (RSI/MACD/volume-spike/social) - kept small on
- *     purpose to respect CoinGecko's free-tier rate limit
- *  4. score every coin and return the sorted list
+ * RSI(14)/MACD/volume-ratio/7d-change all come from the same 40-day daily
+ * klines fetch - Binance gives OHLCV directly (unlike CoinGecko's
+ * separate prices/volumes arrays), so this is a single request per coin.
  */
-async function runFullScreening({ category } = {}) {
-  const coins = category ? await getCoinsByCategory(category) : await getTopCoins(250);
-  const watchlistIds = getWatchlistCoinIds();
-  const { detailedCoinsLimit } = getSettings();
+async function computeKlineMetrics(entry) {
+  try {
+    const klines = await binance.getDailyKlines(entry.symbol, 40);
+    const closes = klines.map((k) => parseFloat(k[4]));
+    const quoteVolumes = klines.map((k) => parseFloat(k[7]));
 
-  const quickList = coins.map(buildQuickMetrics);
-  const byHeuristic = [...quickList].sort((a, b) => b._candidateHeuristic - a._candidateHeuristic);
-  const detailedIds = new Set(byHeuristic.slice(0, detailedCoinsLimit).map((c) => c.id));
-  watchlistIds.forEach((id) => detailedIds.add(id));
+    const rsi = calculateRSI(closes, 14);
+    const macd = calculateMACD(closes, 12, 26, 9);
+
+    let volumeRatio = null;
+    if (quoteVolumes.length >= 2) {
+      const latest = quoteVolumes[quoteVolumes.length - 1];
+      const prior = quoteVolumes.slice(0, -1);
+      const avgPrior = prior.reduce((a, b) => a + b, 0) / prior.length;
+      volumeRatio = avgPrior > 0 ? latest / avgPrior : null;
+    }
+
+    let change7d = null;
+    if (closes.length >= 8) {
+      const weekAgoClose = closes[closes.length - 8];
+      change7d = weekAgoClose > 0 ? ((entry.price - weekAgoClose) / weekAgoClose) * 100 : null;
+    }
+
+    return { rsi, macdHistogram: macd ? macd.histogram : null, volumeRatio, change7d };
+  } catch (err) {
+    console.warn(`[screening] klines failed for ${entry.symbol}: ${err.message}`);
+    return { rsi: null, macdHistogram: null, volumeRatio: null, change7d: null };
+  }
+}
+
+async function computeSymbolMetrics(entry) {
+  const avgPrice = (entry.high24h + entry.low24h) / 2 || entry.price;
+  const volatilityPct = calculateVolatility(entry.high24h, entry.low24h, avgPrice);
+
+  let isNew = false;
+  if (entry.onboardDate) {
+    const daysSinceOnboard = (Date.now() - entry.onboardDate) / 86400000;
+    isNew = daysSinceOnboard <= NEW_LISTING_DAYS;
+  }
+
+  const kline = await computeKlineMetrics(entry);
+
+  let social = null;
+  if (isSocialConfigured()) {
+    social = await getSocialMomentum(entry.baseAsset);
+  }
+
+  const onchain = await getOnchainMetrics(entry.symbol, entry.baseAsset);
+
+  return { ...kline, volatilityPct, isNew, social, onchain };
+}
+
+function finalizeCoin(entry, metrics) {
+  const scoreInput = {
+    change24h: entry.change24h,
+    change7d: metrics.change7d,
+    volatilityPct: metrics.volatilityPct,
+    rsi: metrics.rsi,
+    volumeRatio: metrics.volumeRatio,
+    social: metrics.social,
+    onchain: metrics.onchain,
+  };
+  const { total, breakdown, weights } = computeScore(scoreInput);
+
+  return {
+    id: entry.symbol,
+    symbol: entry.baseAsset,
+    name: entry.baseAsset,
+    image: null,
+    price: entry.price,
+    volume24h: round(entry.volume24h),
+    volumeRank: entry.rank ?? null,
+    change24h: round(entry.change24h),
+    change7d: metrics.change7d != null ? round(metrics.change7d) : null,
+    high24h: entry.high24h,
+    low24h: entry.low24h,
+    volatilityPct: round(metrics.volatilityPct),
+    isNew: metrics.isNew,
+    rsi: metrics.rsi != null ? round(metrics.rsi) : null,
+    macdHistogram: metrics.macdHistogram != null ? round(metrics.macdHistogram, 6) : null,
+    volumeRatio: metrics.volumeRatio != null ? round(metrics.volumeRatio) : null,
+    social: metrics.social || null,
+    socialAvailable: Boolean(metrics.social?.available),
+    onchain: metrics.onchain || null,
+    onchainAvailable: Boolean(metrics.onchain?.available),
+    detailed: true,
+    score: total,
+    scoreBreakdown: breakdown,
+    scoreWeights: weights,
+  };
+}
+
+/**
+ * Runs the full screening pipeline against Binance USDT-M perpetuals:
+ *  1. top `detailedCoinsLimit` pairs by 24h quote volume (+ any watchlist
+ *     pairs that fell outside that ranking)
+ *  2. RSI/MACD/volume-ratio/7d-change from a single daily-klines fetch
+ *     per pair, plus optional social/on-chain metrics
+ *  3. score every pair and return the sorted list
+ * Binance's generous rate limit means every pair in the universe gets
+ * full ("detailed") analysis every cycle - no more quick-vs-detailed
+ * split like the old CoinGecko-backed pipeline needed.
+ */
+async function runFullScreening() {
+  const { detailedCoinsLimit } = getSettings();
+  const universe = await binance.getUniverse(detailedCoinsLimit);
+
+  const watchlistIds = getWatchlistCoinIds();
+  const universeIds = new Set(universe.map((u) => u.symbol));
+  const missingWatchlist = [];
+  for (const id of watchlistIds) {
+    if (universeIds.has(id)) continue;
+    const snap = await binance.getSymbolSnapshot(id).catch((err) => {
+      console.warn(`[screening] watchlist symbol ${id} snapshot failed: ${err.message}`);
+      return null;
+    });
+    if (snap) missingWatchlist.push(snap);
+  }
+
+  const fullList = [...universe, ...missingWatchlist].map((entry, i) => ({ ...entry, rank: i + 1 }));
 
   const results = [];
-  for (const quick of quickList) {
-    if (detailedIds.has(quick.id)) {
-      // Pacing between CoinGecko requests is handled centrally by the
-      // shared adaptive rate limiter in utils/httpClient.js.
-      const detail = await fetchDetailedMetrics(quick);
-      results.push(finalizeCoin(quick, detail));
-    } else {
-      results.push(finalizeCoin(quick, null));
-    }
+  for (const entry of fullList) {
+    const metrics = await computeSymbolMetrics(entry);
+    results.push(finalizeCoin(entry, metrics));
   }
 
   results.sort((a, b) => b.score - a.score);
@@ -214,7 +193,7 @@ function persistSignals(coins, threshold) {
 }
 
 /** Runs screening, updates the in-memory cache, and returns it. `onDone(result, newSignals)` fires after persistence. */
-async function triggerScreening({ category, threshold, force = false, onDone } = {}) {
+async function triggerScreening({ threshold, force = false, onDone } = {}) {
   const now = Date.now();
   if (!force && now - lastTriggeredAt < MIN_MANUAL_REFRESH_GAP_MS) {
     return latestScreening;
@@ -224,10 +203,10 @@ async function triggerScreening({ category, threshold, force = false, onDone } =
   lastTriggeredAt = now;
   latestScreening.isRunning = true;
   try {
-    const coins = await runFullScreening({ category });
+    const coins = await runFullScreening();
     latestScreening = { coins, updatedAt: new Date().toISOString(), isRunning: false };
 
-    if (!category && threshold != null) {
+    if (threshold != null) {
       const newSignals = persistSignals(coins, threshold);
       if (onDone) onDone(latestScreening, newSignals);
     } else if (onDone) {

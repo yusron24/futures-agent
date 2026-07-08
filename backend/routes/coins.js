@@ -1,6 +1,6 @@
 const express = require('express');
-const coingecko = require('../services/coingeckoService');
-const { triggerScreening, getLatestScreening, runFullScreening } = require('../services/screeningService');
+const binance = require('../services/binanceService');
+const { triggerScreening, getLatestScreening } = require('../services/screeningService');
 const { getOnchainMetrics } = require('../services/onchainService');
 const { computeScore } = require('../services/scoringService');
 const { getSettings } = require('../db/settingsStore');
@@ -9,31 +9,17 @@ const router = express.Router();
 
 function applyFilters(coins, query) {
   let result = coins;
-  const minMarketCap = query.minMarketCap ? Number(query.minMarketCap) : null;
-  if (minMarketCap) result = result.filter((c) => (c.marketCap || 0) >= minMarketCap);
+  const minVolume24h = query.minVolume24h ? Number(query.minVolume24h) : null;
+  if (minVolume24h) result = result.filter((c) => (c.volume24h || 0) >= minVolume24h);
   if (query.newOnly === 'true') result = result.filter((c) => c.isNew);
   if (query.minScore) result = result.filter((c) => c.score >= Number(query.minScore));
   return result;
 }
 
-// GET /api/coins/screening?minMarketCap=&newOnly=&category=&minScore=&refresh=true
+// GET /api/coins/screening?minVolume24h=&newOnly=&minScore=&refresh=true
 router.get('/screening', async (req, res) => {
   try {
-    const { category } = req.query;
     const { signalScoreThreshold } = getSettings();
-
-    if (category) {
-      // Category screening is computed on demand (not part of the 5-min global cache)
-      const coins = await runFullScreening({ category });
-      return res.json({
-        success: true,
-        updatedAt: new Date().toISOString(),
-        category,
-        threshold: signalScoreThreshold,
-        count: coins.length,
-        coins: applyFilters(coins, req.query),
-      });
-    }
 
     if (req.query.refresh === 'true') {
       await triggerScreening({ threshold: signalScoreThreshold, force: false });
@@ -50,34 +36,33 @@ router.get('/screening', async (req, res) => {
     });
   } catch (err) {
     console.error('[route:/api/coins/screening]', err.message);
-    res.status(502).json({ success: false, error: 'Failed to load screening data. CoinGecko may be rate-limiting requests, please retry shortly.' });
+    res.status(502).json({ success: false, error: 'Failed to load screening data. Binance may be rate-limiting requests, please retry shortly.' });
   }
 });
 
-// GET /api/coins/:id - full detail + 7d chart + indicators for the detail page
+// GET /api/coins/:id - full detail + 7d chart + indicators for the detail page. :id is the Binance symbol (e.g. BTCUSDT).
 router.get('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const [detail, chart] = await Promise.all([
-      coingecko.getCoinDetail(id),
-      coingecko.getCoinMarketChart(id, 7),
+    const symbol = req.params.id.toUpperCase();
+    const [snapshot, hourlyKlines] = await Promise.all([
+      binance.getSymbolSnapshot(symbol),
+      binance.getHourlyKlines(symbol, 168),
     ]);
-    const symbol = (detail.symbol || '').toUpperCase();
 
-    // Fetched on demand so the detail page always has on-chain data, even
-    // for coins that weren't part of this cycle's "detailed" screening
-    // subset (cheap here since it's a single coin, unlike the 250-coin scan).
-    const onchain = await getOnchainMetrics(id, symbol);
+    if (!snapshot) {
+      return res.status(404).json({ success: false, error: 'Symbol not found on Binance Futures.' });
+    }
+
+    // Fetched on demand so the detail page always has fresh on-chain data,
+    // even for pairs that weren't in the latest screening cycle.
+    const onchain = await getOnchainMetrics(symbol, snapshot.baseAsset);
 
     const latest = getLatestScreening();
-    const cachedEntry = latest.coins.find((c) => c.id === id) || null;
+    const cachedEntry = latest.coins.find((c) => c.id === symbol) || null;
 
-    // Recompute the score with the freshly-fetched on-chain data so the
-    // breakdown shown here always matches the on-chain panel below it.
     let screeningEntry = cachedEntry;
     if (cachedEntry) {
       const { total, breakdown, weights } = computeScore({
-        change1h: cachedEntry.change1h,
         change24h: cachedEntry.change24h,
         change7d: cachedEntry.change7d,
         volatilityPct: cachedEntry.volatilityPct,
@@ -96,36 +81,33 @@ router.get('/:id', async (req, res) => {
       };
     }
 
+    const daysSinceOnboard = snapshot.onboardDate ? (Date.now() - snapshot.onboardDate) / 86400000 : null;
+
     res.json({
       success: true,
       coin: {
-        id: detail.id,
-        symbol,
-        name: detail.name,
-        image: detail.image?.large,
-        description: detail.description?.en?.slice(0, 500) || '',
-        marketCap: detail.market_data?.market_cap?.usd,
-        marketCapRank: detail.market_cap_rank,
-        price: detail.market_data?.current_price?.usd,
-        high24h: detail.market_data?.high_24h?.usd,
-        low24h: detail.market_data?.low_24h?.usd,
-        change1h: detail.market_data?.price_change_percentage_1h_in_currency?.usd,
-        change24h: detail.market_data?.price_change_percentage_24h,
-        change7d: detail.market_data?.price_change_percentage_7d,
-        ath: detail.market_data?.ath?.usd,
-        atl: detail.market_data?.atl?.usd,
-        atlDate: detail.market_data?.atl_date?.usd,
+        id: symbol,
+        symbol: snapshot.baseAsset,
+        name: snapshot.baseAsset,
+        price: snapshot.price,
+        high24h: snapshot.high24h,
+        low24h: snapshot.low24h,
+        change24h: snapshot.change24h,
+        change7d: screeningEntry?.change7d ?? null,
+        volume24h: snapshot.volume24h,
+        onboardDate: snapshot.onboardDate,
+        isNew: daysSinceOnboard != null ? daysSinceOnboard <= 30 : false,
       },
       chart: {
-        prices: chart.prices || [],
-        volumes: chart.total_volumes || [],
+        prices: hourlyKlines.map((k) => [k[0], parseFloat(k[4])]),
+        volumes: hourlyKlines.map((k) => [k[0], parseFloat(k[7])]),
       },
       onchain,
       screening: screeningEntry,
     });
   } catch (err) {
     console.error(`[route:/api/coins/${req.params.id}]`, err.message);
-    res.status(502).json({ success: false, error: 'Failed to load coin detail from CoinGecko.' });
+    res.status(502).json({ success: false, error: 'Failed to load coin detail from Binance.' });
   }
 });
 

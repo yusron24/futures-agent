@@ -11,15 +11,13 @@ db.exec(`
 // page is persisted here in SQLite and takes precedence from then on
 // (survives restarts, no need to touch .env or restart the process).
 const DEFAULTS = {
-  coingeckoApiKey: process.env.COINGECKO_API_KEY || '',
   lunarcrushApiKey: process.env.LUNARCRUSH_API_KEY || process.env.SOCIAL_API_KEY || '',
   cryptoquantApiKey: process.env.CRYPTOQUANT_API_KEY || '',
   glassnodeApiKey: process.env.GLASSNODE_API_KEY || '',
   whaleAlertApiKey: process.env.WHALE_ALERT_API_KEY || '',
   scanIntervalMinutes: parseInt(process.env.SCAN_INTERVAL_MINUTES || '5', 10),
   signalScoreThreshold: parseFloat(process.env.SIGNAL_SCORE_THRESHOLD || '75'),
-  detailedCoinsLimit: parseInt(process.env.DETAILED_COINS_LIMIT || '30', 10),
-  rsiScreenerCoinsLimit: parseInt(process.env.RSI_SCREENER_COINS_LIMIT || '100', 10),
+  detailedCoinsLimit: parseInt(process.env.DETAILED_COINS_LIMIT || '150', 10),
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
   telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
   telegramEnabled: process.env.TELEGRAM_ENABLED === 'true',
@@ -28,14 +26,13 @@ const DEFAULTS = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
 };
 
-const NUMERIC_KEYS = new Set(['scanIntervalMinutes', 'signalScoreThreshold', 'detailedCoinsLimit', 'rsiScreenerCoinsLimit']);
+const NUMERIC_KEYS = new Set(['scanIntervalMinutes', 'signalScoreThreshold', 'detailedCoinsLimit']);
 const BOOLEAN_KEYS = new Set(['telegramEnabled', 'discordEnabled']);
 
 const LIMITS = {
   scanIntervalMinutes: { min: 1, max: 120 },
   signalScoreThreshold: { min: 0, max: 100 },
-  detailedCoinsLimit: { min: 5, max: 250 },
-  rsiScreenerCoinsLimit: { min: 10, max: 250 },
+  detailedCoinsLimit: { min: 10, max: 300 },
 };
 
 function coerce(key, rawValue) {

@@ -2,14 +2,12 @@ import { useEffect, useState } from 'react';
 import { getSettings, updateSettings, testNotification } from '../api/client';
 
 const EMPTY_FORM = {
-  coingeckoApiKey: '',
   lunarcrushApiKey: '',
   cryptoquantApiKey: '',
   whaleAlertApiKey: '',
   scanIntervalMinutes: 5,
   signalScoreThreshold: 75,
-  detailedCoinsLimit: 60,
-  rsiScreenerCoinsLimit: 100,
+  detailedCoinsLimit: 150,
   telegramBotToken: '',
   telegramChatId: '',
   telegramEnabled: false,
@@ -33,14 +31,12 @@ export default function Settings() {
     getSettings()
       .then((s) =>
         setForm({
-          coingeckoApiKey: s.coingeckoApiKey || '',
           lunarcrushApiKey: s.lunarcrushApiKey || '',
           cryptoquantApiKey: s.cryptoquantApiKey || '',
           whaleAlertApiKey: s.whaleAlertApiKey || '',
           scanIntervalMinutes: s.scanIntervalMinutes,
           signalScoreThreshold: s.signalScoreThreshold,
           detailedCoinsLimit: s.detailedCoinsLimit,
-          rsiScreenerCoinsLimit: s.rsiScreenerCoinsLimit,
           telegramBotToken: s.telegramBotToken || '',
           telegramChatId: s.telegramChatId || '',
           telegramEnabled: Boolean(s.telegramEnabled),
@@ -102,20 +98,6 @@ export default function Settings() {
       </p>
 
       <form onSubmit={handleSave} className="bg-terminal-panel border border-terminal-border rounded-lg p-5 space-y-4">
-        <Field
-          label="CoinGecko API Key (opsional)"
-          hint="Kosongkan untuk pakai tier gratis tanpa key."
-        >
-          <input
-            type="password"
-            autoComplete="off"
-            value={form.coingeckoApiKey}
-            onChange={(e) => set({ coingeckoApiKey: e.target.value })}
-            placeholder="CG-xxxxxxxxxxxxxxxx"
-            className="input"
-          />
-        </Field>
-
         <Field
           label="LunarCrush API Key (opsional)"
           hint="Mengaktifkan skor momentum sosial. Kosong = pakai nilai netral placeholder."
@@ -179,26 +161,16 @@ export default function Settings() {
               className="input"
             />
           </Field>
-          <Field label="Koin Detail / Siklus">
-            <input
-              type="number"
-              min={5}
-              max={250}
-              value={form.detailedCoinsLimit}
-              onChange={(e) => set({ detailedCoinsLimit: e.target.value })}
-              className="input"
-            />
-          </Field>
           <Field
-            label="Pool RSI Screener"
-            hint="Jumlah koin teratas yang dipindai bergilir untuk halaman RSI Screener. Lebih besar = cakupan lebih luas, tapi satu putaran penuh butuh waktu lebih lama."
+            label="Ukuran Universe Screening"
+            hint="Jumlah pair Binance USDT-M Futures teratas (berdasarkan volume 24h) yang dianalisis penuh setiap siklus."
           >
             <input
               type="number"
               min={10}
-              max={250}
-              value={form.rsiScreenerCoinsLimit}
-              onChange={(e) => set({ rsiScreenerCoinsLimit: e.target.value })}
+              max={300}
+              value={form.detailedCoinsLimit}
+              onChange={(e) => set({ detailedCoinsLimit: e.target.value })}
               className="input"
             />
           </Field>

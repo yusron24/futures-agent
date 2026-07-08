@@ -35,7 +35,7 @@ export default function Sidebar() {
         ))}
       </nav>
       <div className="px-4 py-3 border-t border-terminal-border text-[10px] text-terminal-muted">
-        Data: CoinGecko API · Not financial advice
+        Data: Binance Futures API · Not financial advice
       </div>
     </aside>
   );

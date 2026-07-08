@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import FilterBar from '../components/FilterBar';
 import CoinTable from '../components/CoinTable';
 import { TableSkeleton } from '../components/Skeleton';
-import { getScreening, getCategories, getWatchlist, addToWatchlist, removeFromWatchlist } from '../api/client';
+import { getScreening, getWatchlist, addToWatchlist, removeFromWatchlist } from '../api/client';
 import { getSocket } from '../api/socket';
 import useInterval from '../hooks/useInterval';
 import { timeAgo } from '../utils/format';
 
-const DEFAULT_FILTERS = { minMarketCap: '0', category: '', newOnly: false };
+const DEFAULT_FILTERS = { minVolume24h: '0', newOnly: false };
 const POLL_MS = 30000;
 
 export default function Dashboard() {
@@ -16,7 +16,6 @@ export default function Dashboard() {
   const [error, setError] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [categories, setCategories] = useState([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [watchlistIds, setWatchlistIds] = useState(new Set());
 
@@ -35,8 +34,7 @@ export default function Dashboard() {
       setError(null);
       try {
         const params = {};
-        if (filters.minMarketCap && filters.minMarketCap !== '0') params.minMarketCap = filters.minMarketCap;
-        if (filters.category) params.category = filters.category;
+        if (filters.minVolume24h && filters.minVolume24h !== '0') params.minVolume24h = filters.minVolume24h;
         if (filters.newOnly) params.newOnly = 'true';
         if (opts.forceRefresh) params.refresh = 'true';
 
@@ -47,7 +45,7 @@ export default function Dashboard() {
         console.error(err);
         setError(
           err.response?.data?.error ||
-            'Gagal memuat data screening. CoinGecko mungkin sedang membatasi rate limit, coba lagi sebentar lagi.'
+            'Gagal memuat data screening. Binance mungkin sedang membatasi rate limit, coba lagi sebentar lagi.'
         );
       } finally {
         setLoading(false);
@@ -57,9 +55,6 @@ export default function Dashboard() {
   );
 
   useEffect(() => {
-    getCategories()
-      .then(setCategories)
-      .catch(() => setCategories([]));
     loadWatchlist();
   }, [loadWatchlist]);
 
@@ -102,14 +97,13 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="text-right text-xs text-terminal-muted">
-          <div>{coins.length} koin dianalisis</div>
+          <div>{coins.length} pair dianalisis (Binance USDT-M Futures)</div>
         </div>
       </div>
 
       <FilterBar
         filters={filters}
         onChange={setFilters}
-        categories={categories}
         onRefresh={() => loadScreening({ forceRefresh: true })}
         loading={loading}
         autoRefresh={autoRefresh}

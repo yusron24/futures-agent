@@ -84,16 +84,4 @@ function calculateVolatility(high, low, avgPrice) {
   return ((high - low) / avgPrice) * 100;
 }
 
-/** Downsample [timestamp, value] pairs from CoinGecko market_chart to one point per UTC day. */
-function toDailySeries(pairs) {
-  const byDay = new Map();
-  for (const [ts, value] of pairs) {
-    const day = new Date(ts).toISOString().slice(0, 10);
-    byDay.set(day, value); // keep the last value seen for that day
-  }
-  return Array.from(byDay.entries())
-    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([, value]) => value);
-}
-
-module.exports = { sma, emaSeries, calculateRSI, calculateMACD, calculateVolatility, toDailySeries };
+module.exports = { sma, emaSeries, calculateRSI, calculateMACD, calculateVolatility };

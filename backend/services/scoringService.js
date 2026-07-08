@@ -16,9 +16,13 @@ function volumeSpikeScore(volumeRatio) {
   return clamp((volumeRatio - 1) * 50 + 50);
 }
 
-/** Combines 1h/24h/7d % change into a single 0-100 momentum score. */
-function priceMomentumScore({ change1h = 0, change24h = 0, change7d = 0 }) {
-  const raw = 50 + change24h * 2 + change1h * 3 + change7d * 0.5;
+/**
+ * Combines 24h/7d % change into a single 0-100 momentum score. (1h change
+ * isn't part of this - Binance's ticker doesn't report it, and deriving
+ * it would cost an extra request per symbol for little signal value.)
+ */
+function priceMomentumScore({ change24h = 0, change7d = 0 }) {
+  const raw = 50 + change24h * 3 + change7d * 0.7;
   return clamp(raw);
 }
 

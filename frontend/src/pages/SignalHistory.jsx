@@ -51,7 +51,7 @@ export default function SignalHistory() {
                   onClick={() => navigate(`/coin/${s.coin_id}`)}
                 >
                   <td className="px-4 py-3 text-terminal-muted text-xs">{new Date(s.created_at + 'Z').toLocaleString('id-ID')}</td>
-                  <td className="px-2 py-3 font-semibold">{s.symbol} <span className="text-terminal-muted font-normal">{s.name}</span></td>
+                  <td className="px-2 py-3 font-semibold">{s.symbol}</td>
                   <td className="px-2 py-3 text-right font-mono">{formatPrice(s.price)}</td>
                   <td className={`px-2 py-3 text-right font-mono ${changeColor(s.change_24h)}`}>{formatPercent(s.change_24h)}</td>
                   <td className="px-2 py-3 text-right font-mono">{s.volume_spike != null ? `${s.volume_spike.toFixed(2)}x` : '-'}</td>

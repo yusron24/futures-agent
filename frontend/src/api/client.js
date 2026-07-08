@@ -39,11 +39,6 @@ export async function getSignalHistory(params = {}) {
   return data.signals;
 }
 
-export async function getCategories() {
-  const { data } = await client.get('/api/categories');
-  return data.categories;
-}
-
 export async function getHealth() {
   const { data } = await client.get('/api/health');
   return data;

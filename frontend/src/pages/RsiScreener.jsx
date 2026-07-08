@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getRsiScreener } from '../api/client';
 import { TableSkeleton } from '../components/Skeleton';
+import CoinAvatar from '../components/CoinAvatar';
 import useInterval from '../hooks/useInterval';
 import { formatPrice, formatPercent, changeColor, timeAgo } from '../utils/format';
 
@@ -36,18 +37,15 @@ export default function RsiScreener() {
         <h1 className="text-xl font-bold text-terminal-text">RSI Screener</h1>
       </div>
       <p className="text-xs text-terminal-muted mb-4">
-        Koin yang sedang oversold (RSI &lt; 30, berpotensi rebound) atau overbought (RSI &gt; 70, berpotensi
-        koreksi). RSI dihitung bergilir di latar belakang untuk pool koin teratas — bukan sinyal beli/jual, murni
-        indikator teknikal.
+        Pair Binance Futures yang sedang oversold (RSI &lt; 30, berpotensi rebound) atau overbought (RSI &gt; 70,
+        berpotensi koreksi) — murni indikator teknikal, bukan sinyal beli/jual. Dihitung dari seluruh universe
+        screening setiap siklus (tidak ada lagi pemindaian bergilir terpisah).
       </p>
 
       {data && (
         <div className="flex flex-wrap gap-4 text-xs text-terminal-muted mb-4 px-4 py-3 bg-terminal-panel border border-terminal-border rounded-lg">
           <span>
-            Pool dipindai: <b className="text-terminal-text">{data.scannedCount}</b> / {data.poolSize} koin
-          </span>
-          <span>
-            Putaran penuh selesai: <b className="text-terminal-text">{data.rotationsCompleted}</b>x
+            Dianalisis: <b className="text-terminal-text">{data.scannedCount}</b> / {data.poolSize} pair
           </span>
           <span>Update terakhir: {data.updatedAt ? timeAgo(data.updatedAt) : 'belum ada'}</span>
         </div>
@@ -99,7 +97,7 @@ function RsiTable({ title, hint, accentClass, coins, loading }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-terminal-muted border-b border-terminal-border uppercase text-[11px] tracking-wider">
-              <th className="px-4 py-2 font-medium">Koin</th>
+              <th className="px-4 py-2 font-medium">Pair</th>
               <th className="px-2 py-2 font-medium text-right">Harga</th>
               <th className="px-2 py-2 font-medium text-right">24h</th>
               <th className="px-2 py-2 font-medium text-right">RSI</th>
@@ -114,11 +112,8 @@ function RsiTable({ title, hint, accentClass, coins, loading }) {
               >
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2">
-                    {coin.image && <img src={coin.image} alt="" className="w-5 h-5 rounded-full" />}
-                    <div>
-                      <div className="font-semibold text-terminal-text">{coin.symbol}</div>
-                      <div className="text-[11px] text-terminal-muted truncate max-w-[120px]">{coin.name}</div>
-                    </div>
+                    <CoinAvatar symbol={coin.symbol} />
+                    <span className="font-semibold text-terminal-text">{coin.symbol}</span>
                   </div>
                 </td>
                 <td className="px-2 py-2.5 text-right font-mono">{formatPrice(coin.price)}</td>

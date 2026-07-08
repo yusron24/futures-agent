@@ -72,7 +72,7 @@ export default function Watchlist() {
                     className="border-b border-terminal-border/50 hover:bg-white/5 cursor-pointer"
                     onClick={() => navigate(`/coin/${w.coin_id}`)}
                   >
-                    <td className="px-4 py-3 font-semibold">{w.symbol} <span className="text-terminal-muted font-normal">{w.name}</span></td>
+                    <td className="px-4 py-3 font-semibold">{w.symbol}</td>
                     <td className="px-2 py-3 text-right font-mono">{s ? formatPrice(s.price) : '-'}</td>
                     <td className={`px-2 py-3 text-right font-mono ${s ? changeColor(s.change24h) : ''}`}>
                       {s ? formatPercent(s.change24h) : '-'}

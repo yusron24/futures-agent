@@ -7,11 +7,9 @@ const { Server } = require('socket.io');
 const coinsRouter = require('./routes/coins');
 const watchlistRouter = require('./routes/watchlist');
 const signalsRouter = require('./routes/signals');
-const categoriesRouter = require('./routes/categories');
 const rsiScreenerRouter = require('./routes/rsiScreener');
 const createSettingsRouter = require('./routes/settings');
 const { startScheduler, restartScheduler } = require('./services/scheduler');
-const { startRsiScreenerLoop } = require('./services/rsiScreenerService');
 const { getLatestScreening } = require('./services/screeningService');
 const { isSocialConfigured } = require('./services/socialService');
 const { getSettings } = require('./db/settingsStore');
@@ -36,16 +34,14 @@ app.get('/api/health', (req, res) => {
     signalThreshold: settings.signalScoreThreshold,
     scanIntervalMinutes: settings.scanIntervalMinutes,
     detailedCoinsLimit: settings.detailedCoinsLimit,
-    rsiScreenerCoinsLimit: settings.rsiScreenerCoinsLimit,
     socialDataConfigured: isSocialConfigured(),
-    coingeckoApiKeyConfigured: Boolean(settings.coingeckoApiKey),
+    dataSource: 'binance-futures',
   });
 });
 
 app.use('/api/coins', coinsRouter);
 app.use('/api/watchlist', watchlistRouter);
 app.use('/api/signals', signalsRouter);
-app.use('/api/categories', categoriesRouter);
 app.use('/api/rsi-screener', rsiScreenerRouter);
 app.use('/api/settings', createSettingsRouter({ onIntervalChange: () => restartScheduler() }));
 
@@ -76,5 +72,4 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Altcoin screener backend listening on port ${PORT}`);
   startScheduler(io);
-  startRsiScreenerLoop();
 });
