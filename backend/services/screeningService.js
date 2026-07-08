@@ -4,6 +4,7 @@ const { getTopCoins, getCoinsByCategory, sleep } = coingecko;
 const { calculateRSI, calculateMACD, calculateVolatility, toDailySeries } = require('./indicators');
 const { computeScore } = require('./scoringService');
 const { getSocialMomentum, isSocialConfigured } = require('./socialService');
+const { getOnchainMetrics } = require('./onchainService');
 const { getSettings } = require('../db/settingsStore');
 
 const FETCH_DELAY_MS = parseInt(process.env.DETAILED_FETCH_DELAY_MS || '1300', 10);
@@ -81,17 +82,20 @@ async function fetchDetailedMetrics(quick) {
       social = await getSocialMomentum(quick.symbol);
     }
 
+    const onchain = await getOnchainMetrics(quick.id, quick.symbol);
+
     return {
       rsi,
       macdHistogram: macd ? macd.histogram : null,
       macd,
       volumeRatio,
       social,
+      onchain,
       detailed: true,
     };
   } catch (err) {
     console.warn(`[screening] detailed metrics failed for ${quick.id}: ${err.message}`);
-    return { rsi: null, macdHistogram: null, macd: null, volumeRatio: null, social: null, detailed: false };
+    return { rsi: null, macdHistogram: null, macd: null, volumeRatio: null, social: null, onchain: null, detailed: false };
   }
 }
 
@@ -104,8 +108,9 @@ function finalizeCoin(quick, detail) {
     rsi: detail?.rsi ?? null,
     volumeRatio: detail?.volumeRatio ?? null,
     social: detail?.social ?? null,
+    onchain: detail?.onchain ?? null,
   };
-  const { total, breakdown } = computeScore(metrics);
+  const { total, breakdown, weights } = computeScore(metrics);
 
   return {
     id: quick.id,
@@ -126,9 +131,12 @@ function finalizeCoin(quick, detail) {
     volumeRatio: detail?.volumeRatio != null ? round(detail.volumeRatio) : null,
     social: detail?.social || null,
     socialAvailable: Boolean(detail?.social?.available),
+    onchain: detail?.onchain || null,
+    onchainAvailable: Boolean(detail?.onchain?.available),
     detailed: Boolean(detail?.detailed),
     score: total,
     scoreBreakdown: breakdown,
+    scoreWeights: weights,
   };
 }
 

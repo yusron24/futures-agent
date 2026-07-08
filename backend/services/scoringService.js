@@ -1,11 +1,13 @@
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value));
+const round = (n) => Math.round(n);
 
-const WEIGHTS = {
-  volumeSpike: 0.30,
-  priceMomentum: 0.25,
-  volatility: 0.15,
-  rsi: 0.15,
-  social: 0.15,
+const BASE_WEIGHTS = {
+  volumeSpike: 0.25,
+  priceMomentum: 0.20,
+  volatility: 0.10,
+  rsi: 0.10,
+  social: 0.10,
+  onchain: 0.25,
 };
 
 /** volumeRatio = latest day volume / average of the prior days' volume. */
@@ -37,9 +39,47 @@ function socialScore(social) {
 }
 
 /**
+ * On-chain sub-score, combining two bullish signals in equal parts:
+ *  - exchange outflow spike: net % of supply leaving exchanges (negative
+ *    `supplyOnExchangesChange24h` = coins moving to cold storage = bullish)
+ *  - whale accumulation: more large (>$100k) withdrawals from exchanges
+ *    than deposits into them = bullish
+ * Returns null when on-chain data isn't real (dummy/unavailable), so the
+ * caller can exclude it from scoring entirely rather than let placeholder
+ * numbers influence a real score.
+ */
+function onchainSubScores(onchain) {
+  if (!onchain || !onchain.available) return null;
+
+  const exchangeOutflowScore = clamp(50 - (onchain.supplyOnExchangesChange24h ?? 0) * 15);
+  const whaleNet = (onchain.whaleFromExchangeCount ?? 0) - (onchain.whaleToExchangeCount ?? 0);
+  const whaleAccumulationScore = clamp(50 + whaleNet * 6);
+  const combined = (exchangeOutflowScore + whaleAccumulationScore) / 2;
+
+  return { exchangeOutflowScore, whaleAccumulationScore, combined };
+}
+
+/** When on-chain data is unavailable, its 25% weight is redistributed proportionally across the other metrics. */
+function effectiveWeights(onchainAvailable) {
+  if (onchainAvailable) return { ...BASE_WEIGHTS };
+
+  const weights = { ...BASE_WEIGHTS };
+  const freedWeight = weights.onchain;
+  weights.onchain = 0;
+
+  const otherKeys = ['volumeSpike', 'priceMomentum', 'volatility', 'rsi', 'social'];
+  const otherTotal = otherKeys.reduce((sum, k) => sum + BASE_WEIGHTS[k], 0);
+  otherKeys.forEach((k) => {
+    weights[k] = BASE_WEIGHTS[k] + freedWeight * (BASE_WEIGHTS[k] / otherTotal);
+  });
+  return weights;
+}
+
+/**
  * Combines all sub-scores into the final 0-100 potential score using the
- * spec's weighting: volume spike 30%, price momentum 25%, volatility 15%,
- * RSI 15%, social 15%.
+ * spec's weighting: volume spike 25%, price momentum 20%, volatility 10%,
+ * RSI 10%, social 10%, on-chain 25%. If on-chain data isn't available for
+ * a coin, its weight is redistributed proportionally across the rest.
  */
 function computeScore(metrics) {
   const vs = volumeSpikeScore(metrics.volumeRatio);
@@ -47,24 +87,34 @@ function computeScore(metrics) {
   const vol = volatilityScore(metrics.volatilityPct);
   const rsi = rsiScore(metrics.rsi);
   const social = socialScore(metrics.social);
+  const onchainSub = onchainSubScores(metrics.onchain);
+  const onchainAvailable = Boolean(onchainSub);
+  const onchain = onchainAvailable ? onchainSub.combined : 0;
+
+  const weights = effectiveWeights(onchainAvailable);
 
   const total =
-    vs * WEIGHTS.volumeSpike +
-    pm * WEIGHTS.priceMomentum +
-    vol * WEIGHTS.volatility +
-    rsi * WEIGHTS.rsi +
-    social * WEIGHTS.social;
+    vs * weights.volumeSpike +
+    pm * weights.priceMomentum +
+    vol * weights.volatility +
+    rsi * weights.rsi +
+    social * weights.social +
+    onchain * weights.onchain;
 
   return {
-    total: Math.round(clamp(total)),
+    total: round(clamp(total)),
     breakdown: {
-      volumeSpikeScore: Math.round(vs),
-      priceMomentumScore: Math.round(pm),
-      volatilityScore: Math.round(vol),
-      rsiScore: Math.round(rsi),
-      socialScore: Math.round(social),
+      volumeSpike: round(vs),
+      priceMomentum: round(pm),
+      volatility: round(vol),
+      rsi: round(rsi),
+      social: round(social),
+      onchain: onchainAvailable ? round(onchain) : null,
+      onchainExchangeOutflow: onchainAvailable ? round(onchainSub.exchangeOutflowScore) : null,
+      onchainWhaleAccumulation: onchainAvailable ? round(onchainSub.whaleAccumulationScore) : null,
     },
+    weights,
   };
 }
 
-module.exports = { computeScore, WEIGHTS };
+module.exports = { computeScore, BASE_WEIGHTS };

@@ -13,6 +13,9 @@ db.exec(`
 const DEFAULTS = {
   coingeckoApiKey: process.env.COINGECKO_API_KEY || '',
   lunarcrushApiKey: process.env.LUNARCRUSH_API_KEY || process.env.SOCIAL_API_KEY || '',
+  cryptoquantApiKey: process.env.CRYPTOQUANT_API_KEY || '',
+  glassnodeApiKey: process.env.GLASSNODE_API_KEY || '',
+  whaleAlertApiKey: process.env.WHALE_ALERT_API_KEY || '',
   scanIntervalMinutes: parseInt(process.env.SCAN_INTERVAL_MINUTES || '5', 10),
   signalScoreThreshold: parseFloat(process.env.SIGNAL_SCORE_THRESHOLD || '75'),
   detailedCoinsLimit: parseInt(process.env.DETAILED_COINS_LIMIT || '60', 10),

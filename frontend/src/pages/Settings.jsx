@@ -4,6 +4,8 @@ import { getSettings, updateSettings } from '../api/client';
 const EMPTY_FORM = {
   coingeckoApiKey: '',
   lunarcrushApiKey: '',
+  cryptoquantApiKey: '',
+  whaleAlertApiKey: '',
   scanIntervalMinutes: 5,
   signalScoreThreshold: 75,
   detailedCoinsLimit: 60,
@@ -25,6 +27,8 @@ export default function Settings() {
         setForm({
           coingeckoApiKey: s.coingeckoApiKey || '',
           lunarcrushApiKey: s.lunarcrushApiKey || '',
+          cryptoquantApiKey: s.cryptoquantApiKey || '',
+          whaleAlertApiKey: s.whaleAlertApiKey || '',
           scanIntervalMinutes: s.scanIntervalMinutes,
           signalScoreThreshold: s.signalScoreThreshold,
           detailedCoinsLimit: s.detailedCoinsLimit,
@@ -95,6 +99,34 @@ export default function Settings() {
             value={form.lunarcrushApiKey}
             onChange={(e) => set({ lunarcrushApiKey: e.target.value })}
             placeholder="lc_xxxxxxxxxxxxxxxx"
+            className="input"
+          />
+        </Field>
+
+        <Field
+          label="CryptoQuant API Key (opsional)"
+          hint="Exchange inflow/outflow & supply-on-exchange untuk BTC/ETH (dipakai juga sebagai proxy makro untuk altcoin lain). Kosong = data dummy berlabel jelas."
+        >
+          <input
+            type="password"
+            autoComplete="off"
+            value={form.cryptoquantApiKey}
+            onChange={(e) => set({ cryptoquantApiKey: e.target.value })}
+            placeholder="cq_xxxxxxxxxxxxxxxx"
+            className="input"
+          />
+        </Field>
+
+        <Field
+          label="Whale Alert API Key (opsional)"
+          hint="Jumlah transaksi whale >$100k (1 jam terakhir) per koin. Kosong = data dummy berlabel jelas."
+        >
+          <input
+            type="password"
+            autoComplete="off"
+            value={form.whaleAlertApiKey}
+            onChange={(e) => set({ whaleAlertApiKey: e.target.value })}
+            placeholder="wa_xxxxxxxxxxxxxxxx"
             className="input"
           />
         </Field>

@@ -1,6 +1,8 @@
 const express = require('express');
 const coingecko = require('../services/coingeckoService');
 const { triggerScreening, getLatestScreening, runFullScreening } = require('../services/screeningService');
+const { getOnchainMetrics } = require('../services/onchainService');
+const { computeScore } = require('../services/scoringService');
 const { getSettings } = require('../db/settingsStore');
 
 const router = express.Router();
@@ -60,15 +62,45 @@ router.get('/:id', async (req, res) => {
       coingecko.getCoinDetail(id),
       coingecko.getCoinMarketChart(id, 7),
     ]);
+    const symbol = (detail.symbol || '').toUpperCase();
+
+    // Fetched on demand so the detail page always has on-chain data, even
+    // for coins that weren't part of this cycle's "detailed" screening
+    // subset (cheap here since it's a single coin, unlike the 250-coin scan).
+    const onchain = await getOnchainMetrics(id, symbol);
 
     const latest = getLatestScreening();
-    const screeningEntry = latest.coins.find((c) => c.id === id) || null;
+    const cachedEntry = latest.coins.find((c) => c.id === id) || null;
+
+    // Recompute the score with the freshly-fetched on-chain data so the
+    // breakdown shown here always matches the on-chain panel below it.
+    let screeningEntry = cachedEntry;
+    if (cachedEntry) {
+      const { total, breakdown, weights } = computeScore({
+        change1h: cachedEntry.change1h,
+        change24h: cachedEntry.change24h,
+        change7d: cachedEntry.change7d,
+        volatilityPct: cachedEntry.volatilityPct,
+        rsi: cachedEntry.rsi,
+        volumeRatio: cachedEntry.volumeRatio,
+        social: cachedEntry.social,
+        onchain,
+      });
+      screeningEntry = {
+        ...cachedEntry,
+        onchain,
+        onchainAvailable: Boolean(onchain?.available),
+        score: total,
+        scoreBreakdown: breakdown,
+        scoreWeights: weights,
+      };
+    }
 
     res.json({
       success: true,
       coin: {
         id: detail.id,
-        symbol: (detail.symbol || '').toUpperCase(),
+        symbol,
         name: detail.name,
         image: detail.image?.large,
         description: detail.description?.en?.slice(0, 500) || '',
@@ -88,6 +120,7 @@ router.get('/:id', async (req, res) => {
         prices: chart.prices || [],
         volumes: chart.total_volumes || [],
       },
+      onchain,
       screening: screeningEntry,
     });
   } catch (err) {

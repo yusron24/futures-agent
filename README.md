@@ -52,7 +52,10 @@ Buka `http://localhost:5173` di browser.
 | `COINGECKO_API_URL` | Base URL CoinGecko (default tier gratis) |
 | `COINGECKO_API_KEY` | Opsional, untuk CoinGecko Pro/Demo API key — bisa juga diisi lewat halaman Pengaturan |
 | `LUNARCRUSH_API_KEY` / `SOCIAL_API_KEY` | Opsional, mengaktifkan skor momentum sosial. Tanpa key, skor sosial memakai nilai netral placeholder (tetap dihitung dalam skor total, tidak mempengaruhi ranking secara bias) — bisa juga diisi lewat halaman Pengaturan |
-| `DETAILED_COINS_LIMIT` | Jumlah koin top-mover yang dihitung indikator detail (RSI/MACD/volume spike) per siklus, default 60. Dibatasi agar tidak melebihi rate limit gratis CoinGecko (~10-30 request/menit) — bisa diubah lewat halaman Pengaturan |
+| `CRYPTOQUANT_API_KEY` | Opsional, exchange inflow/outflow & supply-on-exchange (BTC/ETH; dipakai sebagai proxy makro untuk altcoin lain) — bisa juga diisi lewat halaman Pengaturan |
+| `WHALE_ALERT_API_KEY` | Opsional, jumlah transaksi whale >$100k (1 jam terakhir) per koin dari [Whale Alert](https://whale-alert.io) — bisa juga diisi lewat halaman Pengaturan |
+| `GLASSNODE_API_KEY` | Dicadangkan untuk pengembangan berikutnya (belum tersambung ke endpoint live) |
+| `DETAILED_COINS_LIMIT` | Jumlah koin top-mover yang dihitung indikator detail (RSI/MACD/volume spike/on-chain) per siklus, default 60. Dibatasi agar tidak melebihi rate limit gratis CoinGecko (~10-30 request/menit) — bisa diubah lewat halaman Pengaturan |
 | `SCAN_INTERVAL_MINUTES` | Interval scheduler penghitungan ulang skor (default 5 menit) — bisa diubah lewat halaman Pengaturan |
 | `SIGNAL_SCORE_THRESHOLD` | Skor minimum agar sebuah koin dicatat sebagai "sinyal" ke riwayat (default 75) — bisa diubah lewat halaman Pengaturan |
 | `CORS_ORIGIN` | Origin frontend yang diizinkan (default `http://localhost:5173`) |
@@ -61,10 +64,20 @@ Buka `http://localhost:5173` di browser.
 
 1. Setiap `SCAN_INTERVAL_MINUTES` menit, backend mengambil 250 koin teratas dari `/coins/markets` CoinGecko (stablecoin & wrapped token difilter otomatis).
 2. Untuk semua koin dihitung metrik "murah" (tanpa request tambahan): perubahan harga 1h/24h/7d, volatilitas (high-low 24h vs harga rata-rata), dan heuristik "baru listing" (berdasarkan `atl_date`).
-3. ~60 koin dengan pergerakan paling signifikan (plus semua koin di watchlist) mendapat analisis mendalam: RSI(14) & MACD(12,26,9) dihitung dari histori harga 30 hari, serta rasio volume spike (volume hari ini vs rata-rata harian sebelumnya) — dilakukan sekuensial dengan jeda antar-request untuk menghindari rate limit CoinGecko (auto-retry dengan exponential backoff saat kena HTTP 429).
-4. Skor potensi 0-100 dihitung dari kombinasi berbobot: Volume Spike 30%, Momentum Harga 25%, Volatilitas 15%, RSI 15%, Sosial 15% (placeholder netral jika API sosial tidak dikonfigurasi).
+3. ~60 koin dengan pergerakan paling signifikan (plus semua koin di watchlist) mendapat analisis mendalam: RSI(14) & MACD(12,26,9) dihitung dari histori harga 30 hari, rasio volume spike (volume hari ini vs rata-rata harian sebelumnya), dan metrik on-chain (lihat bawah) — dilakukan sekuensial dengan jeda antar-request untuk menghindari rate limit CoinGecko (auto-retry dengan exponential backoff saat kena HTTP 429).
+4. Skor potensi 0-100 dihitung dari kombinasi berbobot: Volume Spike 25%, Momentum Harga 20%, Volatilitas 10%, RSI 10%, Sosial 10%, On-Chain 25% (lihat bawah). Bobot metrik apa pun yang datanya tidak tersedia untuk koin tersebut dialihkan secara proporsional ke metrik lain, jadi totalnya selalu 100%.
 5. Koin dengan skor ≥ threshold dicatat ke tabel `signals` di SQLite dan di-broadcast lewat WebSocket (`screening:update`, `signals:new`, `watchlist:alert`) agar dashboard & notifikasi browser update real-time.
 6. Frontend melakukan polling setiap 30 detik (bisa dimatikan) dan juga mendengarkan event WebSocket untuk refresh instan.
+
+### Analisis On-Chain
+
+`backend/services/onchainService.js` menyediakan tiga metrik on-chain per koin, di-cache 5 menit:
+
+- **Exchange inflow/outflow & % supply di exchange** — via CryptoQuant (`CRYPTOQUANT_API_KEY`), hanya tersedia untuk BTC & ETH secara langsung; altcoin lain memakai data BTC sebagai proxy makro (`isProxy: true` pada response).
+- **Whale transaction count (>$100k)** — via [Whale Alert](https://whale-alert.io) (`WHALE_ALERT_API_KEY`), per-koin, jendela 1 jam terakhir (batasan tier gratis), diklasifikasikan sebagai deposit ke exchange (bearish) vs penarikan dari exchange (bullish).
+- **Skor on-chain** = rata-rata dari *exchange outflow spike* (perubahan % supply di exchange) dan *whale accumulation* (net whale withdrawal - deposit), masing-masing bagian dari bobot On-Chain 25%.
+
+Jika tidak ada API key CryptoQuant/Whale Alert yang dikonfigurasi (atau panggilan live gagal), service mengembalikan **data dummy deterministik** — angka berubah tiap 5 menit tapi stabil di jendela yang sama, dengan struktur field identik ke data asli sehingga tinggal diganti nanti. Data dummy ditampilkan di halaman detail koin dengan label jelas "DUMMY (contoh)" dan **tidak** ikut memengaruhi skor — bobot 25%-nya dialihkan proporsional ke metrik lain sampai data live tersedia.
 
 ## Endpoint API
 

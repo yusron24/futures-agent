@@ -10,6 +10,12 @@ export function formatCompact(num) {
   return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(num);
 }
 
+export function formatUsdCompact(num) {
+  if (num == null) return '-';
+  const sign = num < 0 ? '-' : '';
+  return `${sign}$${formatCompact(Math.abs(num))}`;
+}
+
 export function formatPercent(value) {
   if (value == null) return '-';
   const sign = value > 0 ? '+' : '';

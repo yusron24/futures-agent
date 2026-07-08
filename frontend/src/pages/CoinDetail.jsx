@@ -4,7 +4,16 @@ import PriceChart from '../components/PriceChart';
 import ScoreBadge, { BigMoveBadge } from '../components/ScoreBadge';
 import { CardSkeleton } from '../components/Skeleton';
 import { getCoinDetail, addToWatchlist, removeFromWatchlist, getWatchlist } from '../api/client';
-import { formatPrice, formatPercent, formatCompact, changeColor } from '../utils/format';
+import { formatPrice, formatPercent, formatCompact, formatUsdCompact, changeColor } from '../utils/format';
+
+const WEIGHT_ITEMS = [
+  { key: 'volumeSpike', label: 'Volume Spike' },
+  { key: 'priceMomentum', label: 'Momentum' },
+  { key: 'volatility', label: 'Volatilitas' },
+  { key: 'rsi', label: 'RSI' },
+  { key: 'social', label: 'Sosial' },
+  { key: 'onchain', label: 'On-Chain' },
+];
 
 export default function CoinDetail() {
   const { id } = useParams();
@@ -58,7 +67,7 @@ export default function CoinDetail() {
     );
   }
 
-  const { coin, chart, screening } = data;
+  const { coin, chart, screening, onchain } = data;
 
   return (
     <div>
@@ -131,16 +140,83 @@ export default function CoinDetail() {
         </div>
       </div>
 
+      <div className="mt-4 bg-terminal-panel border border-terminal-border rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-sm text-terminal-muted">Metrik On-Chain</span>
+          {onchain && (
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                onchain.source === 'live'
+                  ? 'bg-terminal-green/15 text-terminal-green border-terminal-green/40'
+                  : 'bg-terminal-muted/10 text-terminal-muted border-terminal-muted/30'
+              }`}
+            >
+              {onchain.source === 'live' ? 'LIVE' : 'DUMMY (contoh)'}
+            </span>
+          )}
+          {onchain?.isProxy && (
+            <span className="text-[10px] text-terminal-muted">proxy dari {onchain.proxySource}</span>
+          )}
+        </div>
+        {!onchain ? (
+          <div className="text-xs text-terminal-muted">Data on-chain tidak tersedia.</div>
+        ) : (
+          <>
+            {onchain.source !== 'live' && (
+              <p className="text-[11px] text-terminal-muted mb-3">
+                Belum ada API key CryptoQuant/Whale Alert dikonfigurasi — angka di bawah adalah data contoh
+                (struktur sama seperti data asli) dan <b>tidak</b> ikut memengaruhi skor. Atur di halaman Pengaturan.
+              </p>
+            )}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <OnchainStat label="Exchange Inflow 24h" value={formatUsdCompact(onchain.exchangeInflow24hUsd)} />
+              <OnchainStat label="Exchange Outflow 24h" value={formatUsdCompact(onchain.exchangeOutflow24hUsd)} />
+              <OnchainStat
+                label="Net Flow 24h"
+                value={formatUsdCompact(onchain.netFlow24hUsd)}
+                color={onchain.netFlow24hUsd < 0 ? 'text-terminal-green' : 'text-terminal-red'}
+              />
+              <OnchainStat
+                label="Supply di Exchange"
+                value={`${onchain.supplyOnExchangesPct?.toFixed(2) ?? '-'}%`}
+              />
+              <OnchainStat
+                label="Perubahan Supply 24h"
+                value={formatPercent(onchain.supplyOnExchangesChange24h)}
+                color={changeColor(-onchain.supplyOnExchangesChange24h)}
+              />
+              <OnchainStat
+                label={`Whale Tx ${onchain.whaleWindowMinutes ? `(${onchain.whaleWindowMinutes}m)` : '(contoh)'}`}
+                value={onchain.whaleTxCountRecent}
+              />
+              <OnchainStat label="Whale → Exchange" value={onchain.whaleToExchangeCount} color="text-terminal-red" />
+              <OnchainStat label="Whale ← Exchange" value={onchain.whaleFromExchangeCount} color="text-terminal-green" />
+            </div>
+          </>
+        )}
+      </div>
+
       {screening && (
         <div className="mt-4 bg-terminal-panel border border-terminal-border rounded-lg p-4">
           <div className="text-sm text-terminal-muted mb-2">Rincian Skor Potensi</div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
-            <ScoreItem label="Volume Spike (30%)" value={screening.scoreBreakdown.volumeSpikeScore} />
-            <ScoreItem label="Momentum (25%)" value={screening.scoreBreakdown.priceMomentumScore} />
-            <ScoreItem label="Volatilitas (15%)" value={screening.scoreBreakdown.volatilityScore} />
-            <ScoreItem label="RSI (15%)" value={screening.scoreBreakdown.rsiScore} />
-            <ScoreItem label="Sosial (15%)" value={screening.scoreBreakdown.socialScore} />
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-center">
+            {WEIGHT_ITEMS.map(({ key, label }) => {
+              const value = screening.scoreBreakdown?.[key];
+              const weightPct = screening.scoreWeights ? Math.round(screening.scoreWeights[key] * 100) : null;
+              return (
+                <ScoreItem
+                  key={key}
+                  label={`${label}${weightPct != null ? ` (${weightPct}%)` : ''}`}
+                  value={value != null ? value : 'n/a'}
+                />
+              );
+            })}
           </div>
+          {screening.scoreBreakdown?.onchain == null && (
+            <p className="text-[11px] text-terminal-muted mt-3">
+              Bobot On-Chain dialihkan proporsional ke metrik lain karena data on-chain live belum tersedia untuk koin ini.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -160,6 +236,15 @@ function ScoreItem({ label, value }) {
   return (
     <div className="bg-terminal-bg border border-terminal-border rounded p-3">
       <div className="text-lg font-bold text-terminal-accent">{value}</div>
+      <div className="text-[10px] text-terminal-muted mt-1">{label}</div>
+    </div>
+  );
+}
+
+function OnchainStat({ label, value, color = 'text-terminal-text' }) {
+  return (
+    <div className="bg-terminal-bg border border-terminal-border rounded p-3">
+      <div className={`text-sm font-mono font-semibold ${color}`}>{value}</div>
       <div className="text-[10px] text-terminal-muted mt-1">{label}</div>
     </div>
   );
