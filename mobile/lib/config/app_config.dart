@@ -35,6 +35,10 @@ class AppConfig {
   static const int wsPort = 9443;
   static String get wsBaseUrl => 'wss://$wsHost:$wsPort';
 
+  /// Endpoint WS mentah (dipakai dengan pesan kontrol SUBSCRIBE untuk
+  /// berlangganan banyak stream secara dinamis, cocok untuk 100+ pair).
+  static String get wsRawUrl => 'wss://$wsHost:$wsPort/ws';
+
   // ---------------------------------------------------------------------------
   // DATA / CANDLE
   // ---------------------------------------------------------------------------
@@ -44,7 +48,8 @@ class AppConfig {
   /// Jendela candle lokal minimal per simbol untuk komputasi indikator.
   static const int candleWindow = 500;
 
-  /// Simbol default yang dipantau (dapat diubah lewat Pengaturan).
+  /// Simbol default yang dipantau (fallback saat mode kustom / sebelum daftar
+  /// top-volume berhasil diambil).
   static const List<String> defaultSymbols = <String>[
     'BTCUSDT',
     'ETHUSDT',
@@ -55,6 +60,15 @@ class AppConfig {
     'XRPUSDT',
     'AVAXUSDT',
   ];
+
+  /// Jumlah pair top-volume yang dipantau saat mode "Top Volume".
+  static const int topPairsCount = 100;
+
+  /// Aset quote yang dipertimbangkan untuk peringkat volume.
+  static const String quoteAsset = 'USDT';
+
+  /// Konkurensi maksimum saat mengambil klines banyak simbol via REST.
+  static const int restFetchConcurrency = 6;
 
   /// Interval polling REST cadangan (mis. saat WS terputus), dalam menit.
   static const int restPollMinutes = 5;

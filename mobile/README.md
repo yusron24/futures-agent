@@ -170,10 +170,25 @@ deteksi pola candle.
 
 ## 🔧 Konfigurasi cepat (`lib/config/app_config.dart`)
 
-- `defaultSymbols` — daftar simbol default (BTC, ETH, BNB, SOL, ADA, DOGE, XRP, AVAX).
+- `topPairsCount` — jumlah pair top-volume yang dipantau (default **100**).
+- `defaultSymbols` — daftar fallback saat mode kustom / sebelum daftar top-volume ter-resolve.
 - `interval` — `1h` (timeframe strategi).
 - `candleWindow` — 500 candle bergulir per simbol.
+- `restFetchConcurrency` — konkurensi fetch klines banyak simbol.
 - `proxy*` — kredensial & host proxy.
+
+### Mode pemilihan simbol
+Di **Pengaturan → Simbol Dipantau**:
+- **Top N volume (default)** — otomatis memantau pair `USDT` dengan volume 24 jam
+  tertinggi di seluruh Binance (peringkat dari `exchangeInfo` + `ticker/24hr`,
+  leveraged token UP/DOWN/BULL/BEAR dikecualikan). Jumlah pair (10–200) dapat
+  diatur, dan daftar dapat diperbarui manual. WebSocket berlangganan ratusan
+  stream via pesan kontrol `SUBSCRIBE` pada endpoint `/ws` (bukan URL panjang).
+- **Daftar kustom** — pilih sendiri pair yang dipantau.
+
+> Task latar belakang (workmanager) membatasi pengecekan ke ~25 pair teratas
+> agar muat dalam jendela eksekusi OS; aplikasi di depan memantau semuanya
+> secara real-time via WebSocket.
 
 ---
 

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../config/app_config.dart';
 import '../../config/theme.dart';
+import '../../data/settings_repository.dart';
 import '../../strategies/strategy_registry.dart';
 import '../../state/app_state.dart';
 
@@ -158,40 +159,118 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 20),
           _sectionTitle('Simbol Dipantau'),
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: s.symbols
-                        .map((sym) => Chip(
-                              label: Text(sym.replaceAll('USDT', '')),
-                              backgroundColor: AppColors.surfaceAlt,
-                              deleteIcon: const Icon(Icons.close, size: 16),
-                              onDeleted: s.symbols.length <= 1
-                                  ? null
-                                  : () => _removeSymbol(app, sym),
-                            ))
-                        .toList(),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: AppConfig.defaultSymbols
-                        .where((sym) => !s.symbols.contains(sym))
-                        .map((sym) => ActionChip(
-                              label: Text('+ ${sym.replaceAll('USDT', '')}'),
-                              onPressed: () => _addSymbol(app, sym),
-                            ))
-                        .toList(),
-                  ),
-                ],
-              ),
+            child: Column(
+              children: [
+                RadioListTile<String>(
+                  value: SettingsRepository.modeTopVolume,
+                  groupValue: s.symbolMode,
+                  onChanged: (v) => app.setSymbolMode(v!),
+                  activeColor: AppColors.primary,
+                  title: Text('Top ${s.topPairsCount} volume (seluruh Binance)'),
+                  subtitle: const Text(
+                      'Otomatis memantau pair USDT dengan volume 24 jam tertinggi'),
+                ),
+                const Divider(height: 1),
+                RadioListTile<String>(
+                  value: SettingsRepository.modeCustom,
+                  groupValue: s.symbolMode,
+                  onChanged: (v) => app.setSymbolMode(v!),
+                  activeColor: AppColors.primary,
+                  title: const Text('Daftar kustom'),
+                  subtitle: const Text('Pilih sendiri pair yang dipantau'),
+                ),
+              ],
             ),
           ),
+          if (s.useTopVolume)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('Jumlah pair'),
+                        const Spacer(),
+                        Text('${s.topPairsCount}',
+                            style: const TextStyle(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                    Slider(
+                      value: s.topPairsCount.clamp(10, 200).toDouble(),
+                      min: 10,
+                      max: 200,
+                      divisions: 19,
+                      activeColor: AppColors.primary,
+                      label: '${s.topPairsCount}',
+                      onChanged: (v) =>
+                          setState(() => s.topPairsCount = v.round()),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Text('Memantau ${app.monitoredCount} pair',
+                            style: const TextStyle(
+                                color: AppColors.textSecondary, fontSize: 12)),
+                        const Spacer(),
+                        FilledButton.tonalIcon(
+                          onPressed: app.isResolvingSymbols
+                              ? null
+                              : () => app.refreshTopSymbols(),
+                          icon: app.isResolvingSymbols
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : const Icon(Icons.refresh, size: 18),
+                          label: const Text('Perbarui'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: s.symbols
+                          .map((sym) => Chip(
+                                label: Text(sym.replaceAll('USDT', '')),
+                                backgroundColor: AppColors.surfaceAlt,
+                                deleteIcon: const Icon(Icons.close, size: 16),
+                                onDeleted: s.symbols.length <= 1
+                                    ? null
+                                    : () => _removeSymbol(app, sym),
+                              ))
+                          .toList(),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: AppConfig.defaultSymbols
+                          .where((sym) => !s.symbols.contains(sym))
+                          .map((sym) => ActionChip(
+                                label: Text('+ ${sym.replaceAll('USDT', '')}'),
+                                onPressed: () => _addSymbol(app, sym),
+                              ))
+                          .toList(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           const SizedBox(height: 30),
           Center(
             child: Text('Data: Binance · via proxy ${AppConfig.proxyHost}',
