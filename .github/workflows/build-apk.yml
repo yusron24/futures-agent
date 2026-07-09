@@ -6,6 +6,11 @@ name: Build APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/build-apk.yml"
   pull_request:
     paths:
       - "mobile/**"
