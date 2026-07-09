@@ -78,7 +78,8 @@ class NotificationService {
     );
 
     if (vibrate) {
-      final hasVibrator = await Vibration.hasVibrator() ?? false;
+      // `== true` aman untuk bool maupun bool? lintas versi plugin.
+      final hasVibrator = await Vibration.hasVibrator() == true;
       if (hasVibrator) {
         Vibration.vibrate(pattern: const [0, 200, 100, 200]);
       }

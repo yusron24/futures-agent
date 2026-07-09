@@ -6,7 +6,6 @@ import '../config/app_config.dart';
 import '../data/candle_repository.dart';
 import '../data/settings_repository.dart';
 import '../data/signal_history_repository.dart';
-import '../models/candle.dart';
 import '../models/signal.dart';
 import '../models/symbol_ticker.dart';
 import '../network/binance_rest_client.dart';
