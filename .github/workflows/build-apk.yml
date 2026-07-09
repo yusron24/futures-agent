@@ -52,7 +52,9 @@ jobs:
         run: flutter pub get
 
       - name: Build release APK
-        run: flutter build apk --release
+        # --android-skip-build-dependency-validation: peringatan "versi akan
+        # segera tidak didukung" (Gradle/AGP/Kotlin/compileSdk) tidak menggagalkan build.
+        run: flutter build apk --release --android-skip-build-dependency-validation
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
