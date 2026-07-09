@@ -141,6 +141,21 @@ class SettingsRepository {
   set fetchConcurrency(int v) => _box.put('fetch_concurrency',
       v.clamp(AppConfig.minFetchConcurrency, AppConfig.maxFetchConcurrency));
 
+  // --- Latar belakang (foreground service) ---
+  /// Saat aktif (default): jalankan foreground service Android agar sinyal
+  /// tetap dipantau & dikirim walau aplikasi ditutup (ada notifikasi permanen).
+  bool get backgroundLive => _box.get('background_live', defaultValue: true) as bool;
+  set backgroundLive(bool v) => _box.put('background_live', v);
+
+  /// Jumlah pair teratas yang dipantau di latar belakang (hemat baterai/data).
+  int get backgroundSymbolCap {
+    final v = (_box.get('background_symbol_cap') as num?)?.toInt() ?? 40;
+    return v.clamp(5, 100);
+  }
+
+  set backgroundSymbolCap(int v) =>
+      _box.put('background_symbol_cap', v.clamp(5, 100));
+
   /// Ukuran posisi simulasi berdasarkan risiko: jumlah modal yang dipertaruhkan.
   double riskAmount() => simCapital * (riskPercent / 100.0);
 }

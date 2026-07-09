@@ -7,6 +7,7 @@ import 'data/hive_cache.dart';
 import 'data/settings_repository.dart';
 import 'data/signal_history_repository.dart';
 import 'services/background_service.dart';
+import 'services/foreground_service.dart';
 import 'services/notification_service.dart';
 import 'state/app_state.dart';
 
@@ -16,6 +17,9 @@ Future<void> main() async {
   // Cache lokal (Hive) + notifikasi.
   await HiveCache.init();
   await NotificationService.instance.init();
+
+  // Foreground service Android (dikontrol oleh lifecycle di UI).
+  ForegroundService.init();
 
   // Eksekusi latar belakang untuk cek candle 1 jam (Android).
   try {

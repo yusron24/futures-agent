@@ -83,6 +83,21 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Dipanggil saat aplikasi kembali ke depan: sambung ulang WebSocket (soket
+  /// lama biasanya sudah mati saat di-background) dan segarkan data. Fetch
+  /// klines dilewati untuk simbol yang cache-nya sudah mutakhir sehingga cepat.
+  Future<void> onResume() async {
+    await refreshAll();
+    await _connectWs();
+    notifyListeners();
+  }
+
+  /// Dipanggil saat aplikasi ke latar belakang. Foreground service (bila aktif)
+  /// yang menangani pemantauan; WS UI akan disambung ulang saat resume.
+  void onPause() {
+    // No-op yang disengaja: OS menangguhkan isolate; soket dibiarkan.
+  }
+
   /// Ambil ulang daftar pair top-volume dan simpan ke pengaturan.
   Future<void> _resolveTopSymbols({bool silent = false}) async {
     isResolvingSymbols = true;
