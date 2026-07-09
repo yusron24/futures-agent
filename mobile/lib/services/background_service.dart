@@ -49,8 +49,15 @@ class BackgroundService {
     await Workmanager().cancelByUniqueName(AppConfig.bgTaskUniqueName);
   }
 
-  /// Logika inti yang dijalankan di isolate background: ambil klines terbaru,
-  /// deteksi candle baru tertutup, evaluasi strategi, kirim notifikasi.
+  /// Logika inti yang dijalankan di isolate background: deteksi candle 1 jam
+  /// baru tertutup, evaluasi strategi, kirim notifikasi.
+  ///
+  /// Dipanggil oleh workmanager (tiap ~15 mnt) DAN foreground service (tiap
+  /// ~60 dtk), sehingga harus sangat hemat:
+  ///  1. Hour-guard: candle 1h hanya tertutup sekali per jam — bila jam
+  ///     berjalan sudah pernah diproses, langsung keluar tanpa jaringan.
+  ///  2. Probe murah dulu (2 candle) per simbol; unduhan penuh hanya saat
+  ///     benar-benar ada candle baru tertutup (sekali per jam per simbol).
   static Future<void> runCheck() async {
     await HiveCache.init();
     await NotificationService.instance.init();
@@ -58,11 +65,18 @@ class BackgroundService {
     final settings = SettingsRepository();
     if (!settings.notificationsEnabled) return;
 
+    // Hour-guard: keluar cepat bila jam ini sudah diproses.
+    const hourMs = 3600000;
+    final currentHourStart =
+        (DateTime.now().millisecondsSinceEpoch ~/ hourMs) * hourMs;
+    if (settings.bgLastProcessedHour >= currentHourStart) return;
+
     final candles = CandleRepository();
     final history = SignalHistoryRepository();
     final engine = SignalEngine(settings, history);
     final rest = BinanceRestClient();
 
+    var processedAny = false;
     try {
       // Batasi jumlah simbol di isolate background agar hemat baterai/data
       // (mode top-volume bisa 100+ pair). Simbol teratas (volume tertinggi)
@@ -78,31 +92,42 @@ class BackgroundService {
             : cached.lastWhere((c) => c.isClosed,
                 orElse: () => cached.last).openTime;
 
-        // Ambil candle terbaru (cukup sedikit untuk deteksi penutupan baru).
-        final fresh = await rest.fetchKlines(symbol, limit: 200);
+        // Probe murah: 2 candle terakhir cukup untuk tahu apakah ada candle
+        // baru yang tertutup sejak pengecekan sebelumnya.
+        final probe = await rest.fetchKlines(symbol, limit: 2);
+        if (probe.isEmpty) continue;
+        final probeNewestClosed =
+            probe.lastWhere((c) => c.isClosed, orElse: () => probe.first);
+        if (probeNewestClosed.openTime <= lastClosedTime) {
+          processedAny = true; // sudah mutakhir untuk jam ini
+          continue;
+        }
+
+        // Ada candle baru -> baru sekarang unduh jendela penuh (sekali/jam).
+        final fresh = await rest.fetchKlines(symbol, limit: 300);
         if (fresh.isEmpty) continue;
         await candles.replaceAll(symbol, fresh);
+        processedAny = true;
 
         final closed = candles.closedCandles(symbol);
         if (closed.isEmpty) continue;
-        final newestClosed = closed.last;
 
         // Selesaikan sinyal pending & perbarui akurasi.
         await history.resolvePending(symbol, closed);
 
-        // Hanya bila ada candle 1 jam BARU yang tertutup sejak terakhir.
-        if (newestClosed.openTime > lastClosedTime) {
-          final eval = engine.evaluate(symbol, closed);
-          if (eval.signal.isActionable) {
-            await history.add(eval.signal);
-            await NotificationService.instance.showSignal(
-              eval.signal,
-              sound: settings.soundEnabled,
-              vibrate: settings.vibrationEnabled,
-              soundAsset: settings.soundName,
-            );
-          }
+        final eval = engine.evaluate(symbol, closed);
+        if (eval.signal.isActionable) {
+          await history.add(eval.signal);
+          await NotificationService.instance.showSignal(
+            eval.signal,
+            sound: settings.soundEnabled,
+            vibrate: settings.vibrationEnabled,
+            soundAsset: settings.soundName,
+          );
         }
+      }
+      if (processedAny) {
+        settings.bgLastProcessedHour = currentHourStart;
       }
     } finally {
       rest.close();

@@ -28,7 +28,7 @@ class SignalTaskHandler extends TaskHandler {
   }
 
   @override
-  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {}
+  Future<void> onDestroy(DateTime timestamp) async {}
 
   /// Cegah tumpang tindih bila satu siklus belum selesai.
   Future<void> _tick() async {

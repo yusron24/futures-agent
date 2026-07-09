@@ -39,7 +39,7 @@ class NotificationService {
     _ready = true;
   }
 
-  static final AndroidNotificationDetails _androidDetails =
+  static const AndroidNotificationDetails _androidDetails =
       AndroidNotificationDetails(
     'scalp_signals',
     'Sinyal Scalping',

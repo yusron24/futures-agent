@@ -156,6 +156,12 @@ class SettingsRepository {
   set backgroundSymbolCap(int v) =>
       _box.put('background_symbol_cap', v.clamp(5, 100));
 
+  /// Awal jam (epoch ms) terakhir yang sudah diproses oleh pengecekan
+  /// background — mencegah kerja/jaringan berulang dalam jam yang sama.
+  int get bgLastProcessedHour =>
+      (_box.get('bg_last_processed_hour') as num?)?.toInt() ?? 0;
+  set bgLastProcessedHour(int v) => _box.put('bg_last_processed_hour', v);
+
   /// Ukuran posisi simulasi berdasarkan risiko: jumlah modal yang dipertaruhkan.
   double riskAmount() => simCapital * (riskPercent / 100.0);
 }

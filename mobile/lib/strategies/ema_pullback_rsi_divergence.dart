@@ -95,7 +95,7 @@ class EmaPullbackRsiDivergence extends Strategy {
         indicators: {
           'EMA50': emaNow.toStringAsFixed(4),
           'RSI(14)': rsi[last].toStringAsFixed(1),
-          'Slope': (slope * 100).toStringAsFixed(2) + '%',
+          'Slope': '${(slope * 100).toStringAsFixed(2)}%',
           'ATR': atr[last].toStringAsFixed(4),
         },
         note: 'Pullback bullish ke EMA50 + divergensi RSI',
@@ -138,7 +138,7 @@ class EmaPullbackRsiDivergence extends Strategy {
         indicators: {
           'EMA50': emaNow.toStringAsFixed(4),
           'RSI(14)': rsi[last].toStringAsFixed(1),
-          'Slope': (slope * 100).toStringAsFixed(2) + '%',
+          'Slope': '${(slope * 100).toStringAsFixed(2)}%',
           'ATR': atr[last].toStringAsFixed(4),
         },
         note: 'Pullback bearish ke EMA50 + divergensi RSI',
