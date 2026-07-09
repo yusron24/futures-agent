@@ -333,6 +333,50 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 20),
+          _sectionTitle('Latar Belakang'),
+          Card(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  value: s.backgroundLive,
+                  onChanged: (v) => setState(() => s.backgroundLive = v),
+                  activeColor: AppColors.primary,
+                  title: const Text('Jalan di latar belakang'),
+                  subtitle: const Text(
+                      'Tetap memantau & mengirim sinyal walau aplikasi ditutup '
+                      '(Android, ada notifikasi permanen). Nonaktifkan untuk '
+                      'hemat baterai.'),
+                ),
+                if (s.backgroundLive) ...[
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                            child: Text('Pair dipantau di latar belakang')),
+                        Text('${s.backgroundSymbolCap}',
+                            style: const TextStyle(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
+                  Slider(
+                    value: s.backgroundSymbolCap.clamp(5, 100).toDouble(),
+                    min: 5,
+                    max: 100,
+                    divisions: 19,
+                    activeColor: AppColors.primary,
+                    label: '${s.backgroundSymbolCap}',
+                    onChanged: (v) =>
+                        setState(() => s.backgroundSymbolCap = v.round()),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
           _sectionTitle('Pembaruan Aplikasi'),
           Card(
             child: Padding(

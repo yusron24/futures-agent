@@ -33,6 +33,9 @@ dependencies:
   # Eksekusi latar belakang (cek candle 1 jam saat app di background)
   workmanager: ^0.6.0
 
+  # Foreground service Android: tetap memantau sinyal saat app ditutup
+  flutter_foreground_task: ^8.17.0
+
   # Membuka URL rilis/APK (tombol perbarui aplikasi)
   url_launcher: ^6.3.0
 
