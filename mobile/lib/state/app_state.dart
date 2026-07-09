@@ -40,6 +40,7 @@ class AppState extends ChangeNotifier {
   String? errorMessage;
 
   Timer? _uiCoalesce;
+  Timer? _tickerPollTimer;
   final Set<StreamSubscription> _subs = {};
 
   List<String> get symbols => settings.symbols;
@@ -142,12 +143,19 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      // Klines dengan konkurensi terbatas agar cepat tapi ramah rate-limit.
+      // Klines dengan konkurensi terbatas. Simbol yang cache-nya sudah mutakhir
+      // (dijaga live oleh WebSocket) DILEWATI agar tidak mengunduh ulang —
+      // ini membuat refresh nyaris instan & sangat hemat bandwidth.
       await _runPooled<String>(
         syms,
         AppConfig.restFetchConcurrency,
         (s) async {
-          final kl = await rest.fetchKlines(s, limit: AppConfig.candleWindow);
+          if (_isFresh(s)) {
+            _evaluateSymbol(s, notify: false);
+            return;
+          }
+          final kl =
+              await rest.fetchKlines(s, limit: AppConfig.restWarmupCandles);
           if (kl.isNotEmpty) {
             await candles.replaceAll(s, kl);
             await _resolveAndEvaluate(s, notify: false);
@@ -161,6 +169,18 @@ class AppState extends ChangeNotifier {
       errorMessage = 'Gagal memuat data (offline?). Menampilkan cache.';
     }
     notifyListeners();
+  }
+
+  /// Apakah cache candle sebuah simbol sudah mutakhir (candle 1 jam terakhir
+  /// yang tertutup sudah ada) sehingga tidak perlu di-fetch ulang.
+  bool _isFresh(String symbol) {
+    final closed = candles.closedCandles(symbol);
+    if (closed.length < AppConfig.minReadyCandles) return false;
+    const hourMs = 3600000;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final currentHourStart = (now ~/ hourMs) * hourMs;
+    final expectedLastClosedOpen = currentHourStart - hourMs;
+    return closed.last.openTime >= expectedLastClosedOpen;
   }
 
   /// Jalankan [task] atas [items] dengan paling banyak [concurrency] bersamaan.
@@ -194,7 +214,11 @@ class AppState extends ChangeNotifier {
     }
     _subs.clear();
 
-    final ws = BinanceWsClient(symbols);
+    // Mode hemat bandwidth: matikan stream miniTicker (firehose ~1 pesan/detik
+    // per simbol). Harga tetap live dari stream kline; perubahan 24 jam
+    // diperbarui berkala via REST ringan.
+    final dataSaver = settings.dataSaver;
+    final ws = BinanceWsClient(symbols, includeMiniTicker: !dataSaver);
     _ws = ws;
     _subs.add(ws.candleStream.listen(_onCandle));
     _subs.add(ws.tickerStream.listen(_onTicker));
@@ -203,6 +227,41 @@ class AppState extends ChangeNotifier {
       _scheduleUiUpdate();
     }));
     await ws.connect();
+
+    _tickerPollTimer?.cancel();
+    if (dataSaver) {
+      _tickerPollTimer = Timer.periodic(
+        const Duration(seconds: AppConfig.tickerPollSeconds),
+        (_) => _refreshTickersOnly(),
+      );
+    }
+  }
+
+  /// Ambil ulang HANYA ticker 24 jam (ringan) — dipakai saat mode hemat
+  /// bandwidth untuk memperbarui persentase perubahan tanpa stream miniTicker.
+  Future<void> _refreshTickersOnly() async {
+    final syms = symbols;
+    try {
+      for (var i = 0; i < syms.length; i += 50) {
+        final chunk =
+            syms.sublist(i, i + 50 > syms.length ? syms.length : i + 50);
+        final ticks = await rest.fetch24hTickers(chunk);
+        for (final t in ticks) {
+          final existing = tickers[t.symbol];
+          // Pertahankan harga terbaru dari kline; ambil % perubahan dari REST.
+          tickers[t.symbol] = existing == null
+              ? t
+              : existing.copyWith(
+                  changePercent24h: t.changePercent24h,
+                  updatedAt: DateTime.now().millisecondsSinceEpoch,
+                );
+        }
+      }
+      isOnline = true;
+    } catch (_) {
+      // Abaikan; coba lagi di siklus berikutnya.
+    }
+    _scheduleUiUpdate();
   }
 
   // ---------------------------------------------------------------------------
@@ -210,6 +269,19 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   Future<void> _onCandle(WsCandleEvent e) async {
+    // Jaga harga tetap live dari stream kline (penting saat miniTicker dimatikan
+    // di mode hemat bandwidth). % perubahan 24 jam dipertahankan apa adanya.
+    final existing = tickers[e.symbol];
+    final now = DateTime.now().millisecondsSinceEpoch;
+    tickers[e.symbol] = existing == null
+        ? SymbolTicker(
+            symbol: e.symbol,
+            lastPrice: e.candle.close,
+            changePercent24h: 0,
+            updatedAt: now,
+          )
+        : existing.copyWith(lastPrice: e.candle.close, updatedAt: now);
+
     final newlyClosed = await candles.applyUpdate(e.symbol, e.candle);
     if (newlyClosed != null) {
       // Candle 1 jam baru ditutup -> jalankan strategi & mungkin kirim sinyal.
@@ -304,9 +376,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Terapkan perubahan mode hemat bandwidth: sambung ulang WS sesuai setelan.
+  Future<void> applyDataSaver(bool enabled) async {
+    settings.dataSaver = enabled;
+    await _connectWs();
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _uiCoalesce?.cancel();
+    _tickerPollTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
     }

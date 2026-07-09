@@ -123,6 +123,12 @@ class SettingsRepository {
       _box.get(_kVibration, defaultValue: true) as bool;
   set vibrationEnabled(bool v) => _box.put(_kVibration, v);
 
+  // --- Hemat bandwidth ---
+  /// Saat aktif (default): stream miniTicker dimatikan, warmup candle lebih
+  /// kecil, dan simbol yang cache-nya mutakhir tidak di-fetch ulang.
+  bool get dataSaver => _box.get('data_saver', defaultValue: true) as bool;
+  set dataSaver(bool v) => _box.put('data_saver', v);
+
   /// Ukuran posisi simulasi berdasarkan risiko: jumlah modal yang dipertaruhkan.
   double riskAmount() => simCapital * (riskPercent / 100.0);
 }
