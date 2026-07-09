@@ -1,0 +1,75 @@
+name: Build APK
+
+# Membangun APK release (debug-signed, langsung dapat dipasang) di runner
+# GitHub x86_64 — menghindari masalah aapt2 ARM64 saat build lokal di Termux.
+# Hasil build diunggah sebagai artifact dan (pada push ke main) diterbitkan ke
+# GitHub Release "apk-latest" agar mudah diunduh langsung dari HP.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/build-apk.yml"
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/build-apk.yml"
+
+jobs:
+  build-apk:
+    name: Build release APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # diperlukan untuk menerbitkan APK ke GitHub Release
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate platform scaffolding (Android)
+        # Menambah berkas yang tidak disertakan di repo (Gradle wrapper jar,
+        # gradlew, local.properties, dll). Berkas kustom yang sudah ada
+        # (AndroidManifest, build.gradle, MainActivity, dll) TIDAK ditimpa.
+        run: flutter create . --project-name scalp_signals --org com.scalpsignals --platforms=android
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scalp-signals-apk
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+      - name: Publish APK to GitHub Release
+        # Hanya saat push ke main — agar APK dapat diunduh langsung dari
+        # halaman "Releases" repo (satu ketukan, tanpa masuk tab Actions).
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: Scalp Signals — APK terbaru
+          body: >-
+            APK debug-signed terbaru yang dibangun otomatis dari branch main.
+            Ketuk berkas app-release.apk di bawah untuk mengunduh & memasang.
+          files: mobile/build/app/outputs/flutter-apk/app-release.apk

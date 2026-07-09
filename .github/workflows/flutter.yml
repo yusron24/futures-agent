@@ -1,0 +1,47 @@
+name: Flutter CI
+
+# Analisa statis + unit test untuk aplikasi mobile Flutter di mobile/.
+# flutter analyze & flutter test berjalan di Dart VM sehingga tidak memerlukan
+# scaffolding platform Android/iOS (flutter create).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/flutter.yml"
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/flutter.yml"
+  workflow_dispatch:
+
+jobs:
+  analyze-and-test:
+    name: Analyze & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Static analysis
+        # Infos (saran lint) tidak memblok CI; error & warning tetap gagalkan build.
+        run: flutter analyze --no-fatal-infos
+
+      - name: Unit tests
+        run: flutter test --reporter expanded
