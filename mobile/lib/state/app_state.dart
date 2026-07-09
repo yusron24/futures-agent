@@ -48,9 +48,20 @@ class AppState extends ChangeNotifier {
   // Lifecycle
   // ---------------------------------------------------------------------------
 
+  /// Sedang menyusun ulang daftar pair top-volume.
+  bool isResolvingSymbols = false;
+
+  int get monitoredCount => symbols.length;
+
   Future<void> init() async {
     isLoading = true;
     notifyListeners();
+
+    // 0) Mode top-volume: susun daftar pair top-volume dari seluruh Binance.
+    //    Jika gagal (offline), pakai daftar tersimpan / default.
+    if (settings.useTopVolume) {
+      await _resolveTopSymbols(silent: true);
+    }
 
     // 1) Muat cache dulu agar UI langsung terisi (mendukung offline).
     for (final s in symbols) {
@@ -71,19 +82,78 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> refreshAll() async {
+  /// Ambil ulang daftar pair top-volume dan simpan ke pengaturan.
+  Future<void> _resolveTopSymbols({bool silent = false}) async {
+    isResolvingSymbols = true;
+    if (!silent) notifyListeners();
     try {
-      final ticks = await rest.fetch24hTickers(symbols);
-      for (final t in ticks) {
-        tickers[t.symbol] = t;
+      final top = await rest.fetchTopSymbolsByVolume(
+        limit: settings.topPairsCount,
+      );
+      if (top.isNotEmpty) {
+        settings.resolvedTopSymbols = top;
+        isOnline = true;
+        errorMessage = null;
       }
-      for (final s in symbols) {
-        final kl = await rest.fetchKlines(s, limit: AppConfig.candleWindow);
-        if (kl.isNotEmpty) {
-          await candles.replaceAll(s, kl);
-          await _resolveAndEvaluate(s, notify: false);
+    } catch (_) {
+      // Biarkan daftar tersimpan sebelumnya; jangan gagalkan startup.
+    } finally {
+      isResolvingSymbols = false;
+    }
+  }
+
+  /// Dipanggil dari UI: perbarui peringkat top-volume lalu muat ulang data & WS.
+  Future<void> refreshTopSymbols() async {
+    if (!settings.useTopVolume) return;
+    await _resolveTopSymbols();
+    for (final s in symbols) {
+      await candles.loadCached(s);
+    }
+    await refreshAll();
+    await _ws?.updateSymbols(symbols);
+    notifyListeners();
+  }
+
+  /// Ganti mode simbol (top-volume / custom) lalu terapkan.
+  Future<void> setSymbolMode(String mode) async {
+    settings.symbolMode = mode;
+    if (mode == SettingsRepository.modeTopVolume &&
+        settings.resolvedTopSymbols.isEmpty) {
+      await _resolveTopSymbols();
+    }
+    for (final s in symbols) {
+      await candles.loadCached(s);
+    }
+    await refreshAll();
+    await _ws?.updateSymbols(symbols);
+    notifyListeners();
+  }
+
+  Future<void> refreshAll() async {
+    final syms = symbols;
+    try {
+      // Ticker awal (dipecah agar parameter tidak terlalu panjang).
+      for (var i = 0; i < syms.length; i += 50) {
+        final chunk =
+            syms.sublist(i, i + 50 > syms.length ? syms.length : i + 50);
+        final ticks = await rest.fetch24hTickers(chunk);
+        for (final t in ticks) {
+          tickers[t.symbol] = t;
         }
       }
+
+      // Klines dengan konkurensi terbatas agar cepat tapi ramah rate-limit.
+      await _runPooled<String>(
+        syms,
+        AppConfig.restFetchConcurrency,
+        (s) async {
+          final kl = await rest.fetchKlines(s, limit: AppConfig.candleWindow);
+          if (kl.isNotEmpty) {
+            await candles.replaceAll(s, kl);
+            await _resolveAndEvaluate(s, notify: false);
+          }
+        },
+      );
       isOnline = true;
       errorMessage = null;
     } catch (e) {
@@ -91,6 +161,30 @@ class AppState extends ChangeNotifier {
       errorMessage = 'Gagal memuat data (offline?). Menampilkan cache.';
     }
     notifyListeners();
+  }
+
+  /// Jalankan [task] atas [items] dengan paling banyak [concurrency] bersamaan.
+  Future<void> _runPooled<T>(
+    List<T> items,
+    int concurrency,
+    Future<void> Function(T) task,
+  ) async {
+    if (items.isEmpty) return;
+    var index = 0;
+    Future<void> worker() async {
+      while (true) {
+        final i = index++;
+        if (i >= items.length) break;
+        try {
+          await task(items[i]);
+        } catch (_) {
+          // Lewati simbol yang gagal, lanjut ke berikutnya.
+        }
+      }
+    }
+
+    final n = concurrency.clamp(1, items.length);
+    await Future.wait(List.generate(n, (_) => worker()));
   }
 
   Future<void> _connectWs() async {

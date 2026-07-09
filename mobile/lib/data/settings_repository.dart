@@ -12,6 +12,13 @@ class SettingsRepository {
   static const _kSoundName = 'sound_name';
   static const _kVibration = 'vibration';
   static const _kNotifications = 'notifications';
+  static const _kSymbolMode = 'symbol_mode';
+  static const _kTopPairsCount = 'top_pairs_count';
+  static const _kResolvedTop = 'resolved_top_symbols';
+
+  /// Mode pemilihan simbol.
+  static const String modeTopVolume = 'top_volume';
+  static const String modeCustom = 'custom';
 
   final _box = HiveCache.settings();
 
@@ -40,8 +47,36 @@ class SettingsRepository {
     enabledStrategies = set.toList();
   }
 
-  // --- Simbol dipantau ---
-  List<String> get symbols {
+  // --- Mode & simbol dipantau ---
+
+  /// [modeTopVolume] (default) = pantau N pair top-volume dari seluruh Binance;
+  /// [modeCustom] = daftar simbol pilihan pengguna.
+  String get symbolMode =>
+      _box.get(_kSymbolMode, defaultValue: modeTopVolume) as String;
+  set symbolMode(String v) => _box.put(_kSymbolMode, v);
+
+  bool get useTopVolume => symbolMode == modeTopVolume;
+
+  /// Jumlah pair top-volume yang dipantau.
+  int get topPairsCount =>
+      (_box.get(_kTopPairsCount) as num?)?.toInt() ?? AppConfig.topPairsCount;
+  set topPairsCount(int v) => _box.put(_kTopPairsCount, v);
+
+  /// Daftar top-volume terakhir yang berhasil di-resolve (disimpan agar tetap
+  /// tersedia saat offline).
+  List<String> get resolvedTopSymbols {
+    final stored = _box.get(_kResolvedTop);
+    if (stored is List && stored.isNotEmpty) {
+      return stored.map((e) => e.toString()).toList();
+    }
+    return const [];
+  }
+
+  set resolvedTopSymbols(List<String> value) =>
+      _box.put(_kResolvedTop, value);
+
+  /// Daftar simbol kustom (mode custom).
+  List<String> get customSymbols {
     final stored = _box.get(_kSymbols);
     if (stored is List && stored.isNotEmpty) {
       return stored.map((e) => e.toString()).toList();
@@ -49,7 +84,19 @@ class SettingsRepository {
     return List<String>.from(AppConfig.defaultSymbols);
   }
 
-  set symbols(List<String> value) => _box.put(_kSymbols, value);
+  set customSymbols(List<String> value) => _box.put(_kSymbols, value);
+
+  /// Simbol efektif yang dipantau aplikasi, sesuai mode aktif.
+  List<String> get symbols {
+    if (useTopVolume) {
+      final top = resolvedTopSymbols;
+      return top.isNotEmpty ? top : List<String>.from(AppConfig.defaultSymbols);
+    }
+    return customSymbols;
+  }
+
+  /// Alias lama untuk kompatibilitas — menulis ke daftar kustom.
+  set symbols(List<String> value) => customSymbols = value;
 
   // --- Manajemen risiko ---
   /// Persentase risiko per trade (dari modal simulasi).

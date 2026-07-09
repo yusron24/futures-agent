@@ -77,6 +77,61 @@ class BinanceRestClient {
         .toList(growable: false);
   }
 
+  /// Ambil [limit] simbol spot dengan quote [AppConfig.quoteAsset] yang
+  /// **volume 24 jam-nya tertinggi** di seluruh Binance.
+  ///
+  /// Langkah:
+  ///  1. `exchangeInfo` -> himpunan simbol SPOT berstatus TRADING dengan
+  ///     quoteAsset yang diminta, mengecualikan leveraged token (UP/DOWN/
+  ///     BULL/BEAR) yang bukan pasar spot murni.
+  ///  2. `ticker/24hr` (semua simbol) -> urutkan berdasarkan `quoteVolume`
+  ///     (nilai USDT), ambil [limit] teratas.
+  Future<List<String>> fetchTopSymbolsByVolume({
+    int limit = AppConfig.topPairsCount,
+    String quote = AppConfig.quoteAsset,
+  }) async {
+    // 1) Simbol valid dari exchangeInfo.
+    final info =
+        await _getJson('/api/v3/exchangeInfo', const {}) as Map<String, dynamic>;
+    final valid = <String>{};
+    for (final s in (info['symbols'] as List)) {
+      final m = s as Map<String, dynamic>;
+      final symbol = m['symbol'] as String;
+      final tradingOk = m['status'] == 'TRADING';
+      final spotOk = m['isSpotTradingAllowed'] == true;
+      final quoteOk = m['quoteAsset'] == quote;
+      if (tradingOk && spotOk && quoteOk && !_isLeveragedToken(symbol, quote)) {
+        valid.add(symbol);
+      }
+    }
+
+    // 2) Volume 24 jam untuk semua simbol, lalu diperingkat.
+    final all = await _getJson('/api/v3/ticker/24hr', const {});
+    final tickers = (all as List).cast<Map<String, dynamic>>();
+    final ranked = tickers
+        .where((t) => valid.contains(t['symbol']))
+        .toList()
+      ..sort((a, b) => _quoteVolume(b).compareTo(_quoteVolume(a)));
+
+    return ranked
+        .take(limit)
+        .map((t) => t['symbol'] as String)
+        .toList(growable: false);
+  }
+
+  static double _quoteVolume(Map<String, dynamic> t) =>
+      double.tryParse(t['quoteVolume']?.toString() ?? '') ?? 0;
+
+  /// Leveraged token (mis. BTCUPUSDT / ETHDOWNUSDT / xxxBULLUSDT / xxxBEARUSDT).
+  static bool _isLeveragedToken(String symbol, String quote) {
+    if (!symbol.endsWith(quote)) return false;
+    final base = symbol.substring(0, symbol.length - quote.length);
+    return base.endsWith('UP') ||
+        base.endsWith('DOWN') ||
+        base.endsWith('BULL') ||
+        base.endsWith('BEAR');
+  }
+
   /// Uji konektivitas (ping) — memastikan proxy + jaringan hidup.
   Future<bool> ping() async {
     try {

@@ -64,7 +64,14 @@ class BackgroundService {
     final rest = BinanceRestClient();
 
     try {
-      for (final symbol in settings.symbols) {
+      // Batasi jumlah simbol di isolate background agar muat dalam jendela
+      // eksekusi OS (mode top-volume bisa 100+ pair). Simbol teratas
+      // (volume tertinggi) diprioritaskan.
+      const bgMaxSymbols = 25;
+      final all = settings.symbols;
+      final subset =
+          all.length > bgMaxSymbols ? all.sublist(0, bgMaxSymbols) : all;
+      for (final symbol in subset) {
         final cached = await candles.loadCached(symbol);
         final lastClosedTime = cached.isEmpty
             ? 0
