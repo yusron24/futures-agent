@@ -45,7 +45,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     subtitle: Text(StrategyRegistry.all[i].description,
                         style: const TextStyle(
                             color: AppColors.textSecondary, fontSize: 12)),
-                    activeColor: AppColors.primary,
+                    activeThumbColor: AppColors.primary,
                   ),
                 ],
               ],
@@ -121,14 +121,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   onChanged: (v) => setState(() => s.notificationsEnabled = v),
                   title: const Text('Notifikasi sinyal'),
                   subtitle: const Text('Saat candle 1 jam ditutup & sinyal muncul'),
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                 ),
                 const Divider(height: 1),
                 SwitchListTile(
                   value: s.soundEnabled,
                   onChanged: (v) => setState(() => s.soundEnabled = v),
                   title: const Text('Suara'),
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                 ),
                 if (s.soundEnabled)
                   Padding(
@@ -152,7 +152,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   value: s.vibrationEnabled,
                   onChanged: (v) => setState(() => s.vibrationEnabled = v),
                   title: const Text('Getaran'),
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                 ),
               ],
             ),
@@ -160,27 +160,30 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 20),
           _sectionTitle('Simbol Dipantau'),
           Card(
-            child: Column(
-              children: [
-                RadioListTile<String>(
-                  value: SettingsRepository.modeTopVolume,
-                  groupValue: s.symbolMode,
-                  onChanged: (v) => app.setSymbolMode(v!),
-                  activeColor: AppColors.primary,
-                  title: Text('Top ${s.topPairsCount} volume (seluruh Binance)'),
-                  subtitle: const Text(
-                      'Otomatis memantau pair USDT dengan volume 24 jam tertinggi'),
-                ),
-                const Divider(height: 1),
-                RadioListTile<String>(
-                  value: SettingsRepository.modeCustom,
-                  groupValue: s.symbolMode,
-                  onChanged: (v) => app.setSymbolMode(v!),
-                  activeColor: AppColors.primary,
-                  title: const Text('Daftar kustom'),
-                  subtitle: const Text('Pilih sendiri pair yang dipantau'),
-                ),
-              ],
+            child: RadioGroup<String>(
+              groupValue: s.symbolMode,
+              onChanged: (v) {
+                if (v != null) app.setSymbolMode(v);
+              },
+              child: Column(
+                children: [
+                  RadioListTile<String>(
+                    value: SettingsRepository.modeTopVolume,
+                    activeColor: AppColors.primary,
+                    title:
+                        Text('Top ${s.topPairsCount} volume (seluruh Binance)'),
+                    subtitle: const Text(
+                        'Otomatis memantau pair USDT dengan volume 24 jam tertinggi'),
+                  ),
+                  const Divider(height: 1),
+                  RadioListTile<String>(
+                    value: SettingsRepository.modeCustom,
+                    activeColor: AppColors.primary,
+                    title: const Text('Daftar kustom'),
+                    subtitle: const Text('Pilih sendiri pair yang dipantau'),
+                  ),
+                ],
+              ),
             ),
           ),
           if (s.useTopVolume)
@@ -323,7 +326,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 SwitchListTile(
                   value: !s.dataSaver,
                   onChanged: (v) => app.applyDataSaver(!v),
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                   title: const Text('Streaming harga live penuh'),
                   subtitle: const Text(
                       'Bandwidth tinggi: semua harga diperbarui real-time via '
@@ -340,7 +343,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 SwitchListTile(
                   value: s.backgroundLive,
                   onChanged: (v) => setState(() => s.backgroundLive = v),
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                   title: const Text('Jalan di latar belakang'),
                   subtitle: const Text(
                       'Tetap memantau & mengirim sinyal walau aplikasi ditutup '
@@ -384,19 +387,18 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  const Row(
                     children: [
-                      const Icon(Icons.system_update,
-                          color: AppColors.primary),
-                      const SizedBox(width: 10),
+                      Icon(Icons.system_update, color: AppColors.primary),
+                      SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Perbarui ke versi terbaru',
+                            Text('Perbarui ke versi terbaru',
                                 style: TextStyle(fontWeight: FontWeight.w600)),
                             Text('Versi terpasang ${AppConfig.appVersion}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: AppColors.textSecondary,
                                     fontSize: 12)),
                           ],
@@ -434,9 +436,9 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 24),
-          Center(
+          const Center(
             child: Text('Data: Binance · via proxy ${AppConfig.proxyHost}',
-                style: const TextStyle(
+                style: TextStyle(
                     color: AppColors.textSecondary, fontSize: 11)),
           ),
           const SizedBox(height: 20),

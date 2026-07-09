@@ -321,7 +321,7 @@ class Indicators {
   /// Volume tiap candle dibagi rata ke seluruh bin yang tercakup range H-L.
   static VolumeProfile volumeProfile(List<Candle> candles, {int bins = 50}) {
     if (candles.isEmpty) {
-      return VolumeProfile(const [], const [], 0, 0, 0);
+      return const VolumeProfile([], [], 0, 0, 0);
     }
     double lo = double.infinity, hi = -double.infinity;
     for (final c in candles) {

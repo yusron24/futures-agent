@@ -87,7 +87,7 @@ class SignalEngine {
         : dirResults.map((r) => r.stopLoss).reduce((a, b) => a < b ? a : b);
 
     // TP terjauh yang masuk akal.
-    double target = isBuy
+    final target = isBuy
         ? dirResults.map((r) => r.takeProfit).reduce((a, b) => a > b ? a : b)
         : dirResults.map((r) => r.takeProfit).reduce((a, b) => a < b ? a : b);
 

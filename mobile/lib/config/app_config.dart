@@ -99,7 +99,7 @@ class AppConfig {
   // PEMBARUAN APLIKASI (GitHub Releases)
   // ---------------------------------------------------------------------------
   /// Versi aplikasi saat ini (samakan dengan `version` di pubspec.yaml).
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '1.1.0';
 
   static const String repoOwner = 'yusron24';
   static const String repoName = 'futures-agent';

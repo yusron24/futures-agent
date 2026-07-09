@@ -123,7 +123,7 @@ class _HistoryPageState extends State<HistoryPage> {
     );
     if (ok == true) {
       await app.history.clear();
-      setState(() {});
+      if (mounted) setState(() {});
     }
   }
 
