@@ -1,0 +1,225 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../config/app_config.dart';
+import '../../config/theme.dart';
+import '../../strategies/strategy_registry.dart';
+import '../../state/app_state.dart';
+
+/// Halaman Pengaturan: aktif/nonaktif strategi, risiko per trade, notifikasi,
+/// suara & getaran, serta pengelolaan simbol.
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  static const _soundOptions = ['alert.mp3', 'chime.mp3', 'ping.mp3'];
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final s = app.settings;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pengaturan')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _sectionTitle('Strategi Scalping'),
+          Card(
+            child: Column(
+              children: [
+                for (int i = 0; i < StrategyRegistry.all.length; i++) ...[
+                  if (i > 0) const Divider(height: 1),
+                  SwitchListTile(
+                    value: s.isStrategyEnabled(StrategyRegistry.all[i].id),
+                    onChanged: (v) => app.toggleStrategy(
+                        StrategyRegistry.all[i].id, v),
+                    title: Text(StrategyRegistry.all[i].name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 14)),
+                    subtitle: Text(StrategyRegistry.all[i].description,
+                        style: const TextStyle(
+                            color: AppColors.textSecondary, fontSize: 12)),
+                    activeColor: AppColors.primary,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          _sectionTitle('Manajemen Risiko (Simulasi)'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text('Risiko per trade'),
+                      const Spacer(),
+                      Text('${s.riskPercent.toStringAsFixed(1)}%',
+                          style: const TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                  Slider(
+                    value: s.riskPercent.clamp(0.1, 10),
+                    min: 0.1,
+                    max: 10,
+                    divisions: 99,
+                    activeColor: AppColors.primary,
+                    label: '${s.riskPercent.toStringAsFixed(1)}%',
+                    onChanged: (v) {
+                      setState(() => s.riskPercent = v);
+                      app.reevaluateAll();
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Text('Modal simulasi'),
+                      const Spacer(),
+                      SizedBox(
+                        width: 120,
+                        child: TextFormField(
+                          initialValue: s.simCapital.toStringAsFixed(0),
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.right,
+                          decoration: const InputDecoration(
+                            prefixText: '\$ ',
+                            isDense: true,
+                          ),
+                          onFieldSubmitted: (v) {
+                            final parsed = double.tryParse(v);
+                            if (parsed != null && parsed > 0) {
+                              setState(() => s.simCapital = parsed);
+                              app.reevaluateAll();
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          _sectionTitle('Notifikasi'),
+          Card(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  value: s.notificationsEnabled,
+                  onChanged: (v) => setState(() => s.notificationsEnabled = v),
+                  title: const Text('Notifikasi sinyal'),
+                  subtitle: const Text('Saat candle 1 jam ditutup & sinyal muncul'),
+                  activeColor: AppColors.primary,
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  value: s.soundEnabled,
+                  onChanged: (v) => setState(() => s.soundEnabled = v),
+                  title: const Text('Suara'),
+                  activeColor: AppColors.primary,
+                ),
+                if (s.soundEnabled)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _soundOptions.contains(s.soundName)
+                          ? s.soundName
+                          : _soundOptions.first,
+                      decoration: const InputDecoration(
+                          labelText: 'Suara notifikasi', isDense: true),
+                      items: _soundOptions
+                          .map((o) => DropdownMenuItem(
+                              value: o, child: Text(o.split('.').first)))
+                          .toList(),
+                      onChanged: (v) =>
+                          setState(() => s.soundName = v ?? s.soundName),
+                    ),
+                  ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  value: s.vibrationEnabled,
+                  onChanged: (v) => setState(() => s.vibrationEnabled = v),
+                  title: const Text('Getaran'),
+                  activeColor: AppColors.primary,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          _sectionTitle('Simbol Dipantau'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: s.symbols
+                        .map((sym) => Chip(
+                              label: Text(sym.replaceAll('USDT', '')),
+                              backgroundColor: AppColors.surfaceAlt,
+                              deleteIcon: const Icon(Icons.close, size: 16),
+                              onDeleted: s.symbols.length <= 1
+                                  ? null
+                                  : () => _removeSymbol(app, sym),
+                            ))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: AppConfig.defaultSymbols
+                        .where((sym) => !s.symbols.contains(sym))
+                        .map((sym) => ActionChip(
+                              label: Text('+ ${sym.replaceAll('USDT', '')}'),
+                              onPressed: () => _addSymbol(app, sym),
+                            ))
+                        .toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 30),
+          Center(
+            child: Text('Data: Binance · via proxy ${AppConfig.proxyHost}',
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 11)),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  void _addSymbol(AppState app, String sym) {
+    final list = [...app.settings.symbols, sym];
+    app.updateSymbols(list);
+  }
+
+  void _removeSymbol(AppState app, String sym) {
+    final list = app.settings.symbols.where((e) => e != sym).toList();
+    app.updateSymbols(list);
+  }
+
+  Widget _sectionTitle(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 8, left: 4),
+        child: Text(t,
+            style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary)),
+      );
+}
