@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_config.dart';
 import '../../config/theme.dart';
@@ -271,7 +272,64 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ),
-          const SizedBox(height: 30),
+          const SizedBox(height: 20),
+          _sectionTitle('Pembaruan Aplikasi'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.system_update,
+                          color: AppColors.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Perbarui ke versi terbaru',
+                                style: TextStyle(fontWeight: FontWeight.w600)),
+                            Text('Versi terpasang ${AppConfig.appVersion}',
+                                style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary),
+                      onPressed: () => _updateApp(),
+                      icon: const Icon(Icons.download),
+                      label: const Text('Unduh & pasang APK terbaru'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: TextButton(
+                      onPressed: () => _openUrl(AppConfig.releasePageUrl),
+                      child: const Text('Buka halaman rilis'),
+                    ),
+                  ),
+                  const Text(
+                    'Sekali klik: APK terbaru diunduh dari GitHub Releases, '
+                    'lalu ketuk berkas untuk memasang (izinkan "Install '
+                    'unknown apps" bila diminta).',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
           Center(
             child: Text('Data: Binance · via proxy ${AppConfig.proxyHost}',
                 style: const TextStyle(
@@ -281,6 +339,35 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
+  }
+
+  /// Buka tautan APK terbaru (unduhan langsung) di aplikasi eksternal/browser.
+  Future<void> _updateApp() async {
+    final ok = await _openUrl(AppConfig.latestApkUrl);
+    if (!ok && mounted) {
+      // Fallback ke halaman rilis bila unduhan langsung gagal dibuka.
+      await _openUrl(AppConfig.releasePageUrl);
+    }
+  }
+
+  Future<bool> _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tidak dapat membuka tautan pembaruan')),
+        );
+      }
+      return ok;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal membuka tautan pembaruan')),
+        );
+      }
+      return false;
+    }
   }
 
   void _addSymbol(AppState app, String sym) {

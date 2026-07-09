@@ -76,4 +76,28 @@ class AppConfig {
   /// Nama unik task background workmanager.
   static const String bgTaskName = 'scalp_hourly_candle_check';
   static const String bgTaskUniqueName = 'scalp_hourly_candle_check_unique';
+
+  // ---------------------------------------------------------------------------
+  // PEMBARUAN APLIKASI (GitHub Releases)
+  // ---------------------------------------------------------------------------
+  /// Versi aplikasi saat ini (samakan dengan `version` di pubspec.yaml).
+  static const String appVersion = '1.0.0';
+
+  static const String repoOwner = 'yusron24';
+  static const String repoName = 'futures-agent';
+
+  /// Tag rilis yang selalu menunjuk build terbaru.
+  static const String releaseTag = 'apk-latest';
+
+  /// Tautan langsung ke APK terbaru (satu klik untuk mengunduh & memasang).
+  static String get latestApkUrl =>
+      'https://github.com/$repoOwner/$repoName/releases/download/$releaseTag/app-release.apk';
+
+  /// Halaman rilis (alternatif bila unduhan langsung diblokir).
+  static String get releasePageUrl =>
+      'https://github.com/$repoOwner/$repoName/releases/tag/$releaseTag';
+
+  /// Endpoint API publik GitHub untuk info rilis terbaru (cek waktu update).
+  static String get releaseApiUrl =>
+      'https://api.github.com/repos/$repoOwner/$repoName/releases/tags/$releaseTag';
 }
