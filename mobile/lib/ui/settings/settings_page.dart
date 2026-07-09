@@ -275,14 +275,61 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 20),
           _sectionTitle('Kinerja & Data'),
           Card(
-            child: SwitchListTile(
-              value: s.dataSaver,
-              onChanged: (v) => app.applyDataSaver(v),
-              activeColor: AppColors.primary,
-              title: const Text('Hemat bandwidth'),
-              subtitle: const Text(
-                  'Matikan stream ticker terus-menerus & unduh candle lebih '
-                  'sedikit. Refresh jauh lebih cepat untuk banyak pair.'),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.speed, color: AppColors.primary),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text('Kecepatan refresh',
+                                style:
+                                    TextStyle(fontWeight: FontWeight.w600)),
+                          ),
+                          Text('${s.fetchConcurrency}×',
+                              style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                      const Text(
+                          'Jumlah unduhan paralel via proxy. Makin tinggi = '
+                          'refresh makin cepat (bandwidth lebih besar).',
+                          style: TextStyle(
+                              color: AppColors.textSecondary, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                Slider(
+                  value: s.fetchConcurrency
+                      .clamp(AppConfig.minFetchConcurrency,
+                          AppConfig.maxFetchConcurrency)
+                      .toDouble(),
+                  min: AppConfig.minFetchConcurrency.toDouble(),
+                  max: AppConfig.maxFetchConcurrency.toDouble(),
+                  divisions:
+                      AppConfig.maxFetchConcurrency - AppConfig.minFetchConcurrency,
+                  activeColor: AppColors.primary,
+                  label: '${s.fetchConcurrency}×',
+                  onChanged: (v) =>
+                      setState(() => s.fetchConcurrency = v.round()),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  value: !s.dataSaver,
+                  onChanged: (v) => app.applyDataSaver(!v),
+                  activeColor: AppColors.primary,
+                  title: const Text('Streaming harga live penuh'),
+                  subtitle: const Text(
+                      'Bandwidth tinggi: semua harga diperbarui real-time via '
+                      'stream. Matikan untuk mode hemat data.'),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 20),

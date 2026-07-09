@@ -77,8 +77,12 @@ class AppConfig {
   /// Aset quote yang dipertimbangkan untuk peringkat volume.
   static const String quoteAsset = 'USDT';
 
-  /// Konkurensi maksimum saat mengambil klines banyak simbol via REST.
-  static const int restFetchConcurrency = 8;
+  /// Konkurensi default saat mengambil klines banyak simbol via REST.
+  /// Nilai tinggi = refresh lebih cepat (memakai lebih banyak koneksi/bandwidth
+  /// paralel lewat proxy). Dapat diubah pengguna di Pengaturan.
+  static const int defaultFetchConcurrency = 20;
+  static const int minFetchConcurrency = 4;
+  static const int maxFetchConcurrency = 40;
 
   /// Interval polling ticker 24 jam via REST saat mode hemat bandwidth
   /// (stream miniTicker dimatikan), dalam detik.

@@ -123,11 +123,23 @@ class SettingsRepository {
       _box.get(_kVibration, defaultValue: true) as bool;
   set vibrationEnabled(bool v) => _box.put(_kVibration, v);
 
-  // --- Hemat bandwidth ---
-  /// Saat aktif (default): stream miniTicker dimatikan, warmup candle lebih
-  /// kecil, dan simbol yang cache-nya mutakhir tidak di-fetch ulang.
-  bool get dataSaver => _box.get('data_saver', defaultValue: true) as bool;
+  // --- Kinerja & bandwidth ---
+  /// Saat aktif: stream miniTicker dimatikan & perubahan 24 jam di-poll berkala
+  /// (hemat data). Default NONAKTIF agar aplikasi memprioritaskan kecepatan
+  /// (harga live penuh via streaming, bandwidth lebih besar).
+  bool get dataSaver => _box.get('data_saver', defaultValue: false) as bool;
   set dataSaver(bool v) => _box.put('data_saver', v);
+
+  /// Jumlah unduhan klines paralel saat refresh. Makin tinggi makin cepat
+  /// (memakai lebih banyak bandwidth paralel lewat proxy).
+  int get fetchConcurrency {
+    final v = (_box.get('fetch_concurrency') as num?)?.toInt() ??
+        AppConfig.defaultFetchConcurrency;
+    return v.clamp(AppConfig.minFetchConcurrency, AppConfig.maxFetchConcurrency);
+  }
+
+  set fetchConcurrency(int v) => _box.put('fetch_concurrency',
+      v.clamp(AppConfig.minFetchConcurrency, AppConfig.maxFetchConcurrency));
 
   /// Ukuran posisi simulasi berdasarkan risiko: jumlah modal yang dipertaruhkan.
   double riskAmount() => simCapital * (riskPercent / 100.0);

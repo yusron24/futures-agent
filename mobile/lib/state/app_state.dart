@@ -143,12 +143,12 @@ class AppState extends ChangeNotifier {
         }
       }
 
-      // Klines dengan konkurensi terbatas. Simbol yang cache-nya sudah mutakhir
-      // (dijaga live oleh WebSocket) DILEWATI agar tidak mengunduh ulang —
-      // ini membuat refresh nyaris instan & sangat hemat bandwidth.
+      // Klines dengan konkurensi tinggi (dapat diatur) agar refresh cepat.
+      // Simbol yang cache-nya sudah mutakhir (dijaga live oleh WebSocket)
+      // tetap dilewati agar tidak mengunduh ulang secara sia-sia.
       await _runPooled<String>(
         syms,
-        AppConfig.restFetchConcurrency,
+        settings.fetchConcurrency,
         (s) async {
           if (_isFresh(s)) {
             _evaluateSymbol(s, notify: false);
