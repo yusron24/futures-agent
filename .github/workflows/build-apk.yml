@@ -2,7 +2,8 @@ name: Build APK
 
 # Membangun APK release (debug-signed, langsung dapat dipasang) di runner
 # GitHub x86_64 — menghindari masalah aapt2 ARM64 saat build lokal di Termux.
-# Unduh hasilnya dari tab "Artifacts" pada run ini.
+# Hasil build diunggah sebagai artifact dan (pada push ke main) diterbitkan ke
+# GitHub Release "apk-latest" agar mudah diunduh langsung dari HP.
 
 on:
   workflow_dispatch:
@@ -20,6 +21,8 @@ jobs:
   build-apk:
     name: Build release APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # diperlukan untuk menerbitkan APK ke GitHub Release
     defaults:
       run:
         working-directory: mobile
@@ -57,3 +60,16 @@ jobs:
           name: scalp-signals-apk
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+
+      - name: Publish APK to GitHub Release
+        # Hanya saat push ke main — agar APK dapat diunduh langsung dari
+        # halaman "Releases" repo (satu ketukan, tanpa masuk tab Actions).
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: Scalp Signals — APK terbaru
+          body: >-
+            APK debug-signed terbaru yang dibangun otomatis dari branch main.
+            Ketuk berkas app-release.apk di bawah untuk mengunduh & memasang.
+          files: mobile/build/app/outputs/flutter-apk/app-release.apk
