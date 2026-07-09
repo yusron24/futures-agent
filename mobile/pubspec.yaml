@@ -27,11 +27,11 @@ dependencies:
 
   # Notifikasi lokal + getaran
   flutter_local_notifications: ^17.2.1
-  vibration: ^1.9.0
+  vibration: ^3.1.0
   audioplayers: ^6.0.0
 
   # Eksekusi latar belakang (cek candle 1 jam saat app di background)
-  workmanager: ^0.5.2
+  workmanager: ^0.6.0
 
   # Utility
   intl: ^0.19.0
