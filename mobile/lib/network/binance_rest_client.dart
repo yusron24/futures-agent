@@ -66,11 +66,18 @@ class BinanceRestClient {
   }
 
   /// Ticker 24 jam untuk sekumpulan simbol.
+  ///
+  /// Memakai `type=MINI` agar payload jauh lebih ringkas (tanpa bid/ask,
+  /// weighted average, dll) sehingga hemat bandwidth lewat proxy. Persentase
+  /// perubahan dihitung dari openPrice/lastPrice di sisi klien.
   Future<List<SymbolTicker>> fetch24hTickers(List<String> symbols) async {
     if (symbols.isEmpty) return const [];
     // Binance mendukung parameter `symbols=[...]` (JSON array, tanpa spasi).
     final encoded = jsonEncode(symbols);
-    final data = await _getJson('/api/v3/ticker/24hr', {'symbols': encoded});
+    final data = await _getJson(
+      '/api/v3/ticker/24hr',
+      {'symbols': encoded, 'type': 'MINI'},
+    );
     final list = data is List ? data : [data];
     return list
         .map((e) => SymbolTicker.fromRest24h(e as Map<String, dynamic>))

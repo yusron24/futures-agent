@@ -26,12 +26,22 @@ class SymbolTicker {
         updatedAt: updatedAt ?? this.updatedAt,
       );
 
-  /// Parse dari REST /api/v3/ticker/24hr.
+  /// Parse dari REST /api/v3/ticker/24hr (mendukung FULL maupun `type=MINI`).
   factory SymbolTicker.fromRest24h(Map<String, dynamic> j) {
+    final last = double.parse(j['lastPrice'].toString());
+    // `type=MINI` tidak menyertakan priceChangePercent -> hitung dari openPrice.
+    double change;
+    final pctRaw = j['priceChangePercent'];
+    if (pctRaw != null) {
+      change = double.tryParse(pctRaw.toString()) ?? 0;
+    } else {
+      final open = double.tryParse(j['openPrice']?.toString() ?? '') ?? last;
+      change = open == 0 ? 0 : ((last - open) / open) * 100;
+    }
     return SymbolTicker(
       symbol: j['symbol'] as String,
-      lastPrice: double.parse(j['lastPrice'].toString()),
-      changePercent24h: double.parse(j['priceChangePercent'].toString()),
+      lastPrice: last,
+      changePercent24h: change,
       updatedAt: DateTime.now().millisecondsSinceEpoch,
     );
   }

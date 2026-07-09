@@ -45,8 +45,18 @@ class AppConfig {
   /// Timeframe utama untuk semua strategi.
   static const String interval = '1h';
 
-  /// Jendela candle lokal minimal per simbol untuk komputasi indikator.
+  /// Jendela candle lokal maksimal per simbol yang disimpan di cache.
   static const int candleWindow = 500;
+
+  /// Jumlah candle yang diambil via REST saat warmup/refresh. Jauh lebih kecil
+  /// dari [candleWindow] untuk menghemat bandwidth (strategi paling banyak
+  /// butuh ~210 candle; sisanya diisi bertahap oleh WebSocket). Ini memangkas
+  /// data yang lewat proxy hingga ~40% saat refresh.
+  static const int restWarmupCandles = 300;
+
+  /// Ambang minimal candle tertutup agar sebuah simbol dianggap "siap" dan
+  /// tidak perlu di-fetch ulang saat refresh bila cache sudah mutakhir.
+  static const int minReadyCandles = 260;
 
   /// Simbol default yang dipantau (fallback saat mode kustom / sebelum daftar
   /// top-volume berhasil diambil).
@@ -68,7 +78,11 @@ class AppConfig {
   static const String quoteAsset = 'USDT';
 
   /// Konkurensi maksimum saat mengambil klines banyak simbol via REST.
-  static const int restFetchConcurrency = 6;
+  static const int restFetchConcurrency = 8;
+
+  /// Interval polling ticker 24 jam via REST saat mode hemat bandwidth
+  /// (stream miniTicker dimatikan), dalam detik.
+  static const int tickerPollSeconds = 90;
 
   /// Interval polling REST cadangan (mis. saat WS terputus), dalam menit.
   static const int restPollMinutes = 5;

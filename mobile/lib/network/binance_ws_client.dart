@@ -33,9 +33,13 @@ enum WsStatus { connecting, connected, disconnected }
 /// Koneksi wss ditunnel via HTTP CONNECT ke proxy dengan menyerahkan
 /// [ProxyHttpClient] ke [WebSocket.connect] (`customClient`).
 class BinanceWsClient {
-  BinanceWsClient(this.symbols);
+  BinanceWsClient(this.symbols, {this.includeMiniTicker = true});
 
   List<String> symbols;
+
+  /// Bila false, hanya berlangganan stream kline (hemat bandwidth) — harga
+  /// live tetap tersedia dari field close kline.
+  final bool includeMiniTicker;
 
   WebSocket? _socket;
   StreamSubscription? _sub;
@@ -59,7 +63,7 @@ class BinanceWsClient {
     for (final s in syms) {
       final lower = s.toLowerCase();
       streams.add('$lower@kline_${AppConfig.interval}');
-      streams.add('$lower@miniTicker');
+      if (includeMiniTicker) streams.add('$lower@miniTicker');
     }
     return streams;
   }

@@ -273,6 +273,19 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           const SizedBox(height: 20),
+          _sectionTitle('Kinerja & Data'),
+          Card(
+            child: SwitchListTile(
+              value: s.dataSaver,
+              onChanged: (v) => app.applyDataSaver(v),
+              activeColor: AppColors.primary,
+              title: const Text('Hemat bandwidth'),
+              subtitle: const Text(
+                  'Matikan stream ticker terus-menerus & unduh candle lebih '
+                  'sedikit. Refresh jauh lebih cepat untuk banyak pair.'),
+            ),
+          ),
+          const SizedBox(height: 20),
           _sectionTitle('Pembaruan Aplikasi'),
           Card(
             child: Padding(
