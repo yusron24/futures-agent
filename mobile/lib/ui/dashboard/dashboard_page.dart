@@ -27,7 +27,7 @@ class DashboardPage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('Swing Signals'),
-            Text('Timeframe ${AppConfig.intervalLabel(app.settings.interval)} · RR 1:2,5',
+            Text('Timeframe ${AppConfig.intervalLabel(app.settings.interval)} · RR 1:2,5 · min ${AppConfig.minSignalConfidence.toStringAsFixed(0)}%',
                 style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w400,

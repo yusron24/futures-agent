@@ -1,3 +1,4 @@
+import '../config/app_config.dart';
 import '../data/settings_repository.dart';
 import '../data/signal_history_repository.dart';
 import '../models/candle.dart';
@@ -117,6 +118,21 @@ class SignalEngine {
         : confWeighted / weightSum;
     if (dirResults.length >= 2) confidence = (confidence + 5);
     confidence = confidence.clamp(0, 100);
+
+    // Filter WAJIB: sinyal hanya aktif bila keyakinan ≥ ambang (mis. 70%).
+    // Di bawah itu dikembalikan NEUTRAL sehingga tidak tampil / notifikasi /
+    // masuk riwayat, namun rincian strategi tetap tersedia untuk halaman Detail.
+    if (confidence < AppConfig.minSignalConfidence) {
+      return SymbolEvaluation(
+        _neutral(
+          symbol,
+          ts,
+          'Keyakinan ${confidence.toStringAsFixed(0)}% < '
+              '${AppConfig.minSignalConfidence.toStringAsFixed(0)}% — dilewati',
+        ),
+        results,
+      );
+    }
 
     final note = dirResults.length >= 2
         ? '${dirResults.length} strategi searah (RR 1:2,5)'
