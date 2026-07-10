@@ -8,6 +8,7 @@ import '../../models/strategy_result.dart';
 import '../../network/binance_ws_client.dart';
 import '../../state/app_state.dart';
 import '../detail/signal_detail_page.dart';
+import '../widgets/live_price.dart';
 import '../widgets/signal_badge.dart';
 
 /// Dashboard utama: daftar simbol yang dipantau dengan harga, perubahan 24 jam,
@@ -67,9 +68,6 @@ class _SymbolCard extends StatelessWidget {
     final eval = app.evaluationFor(symbol);
     final signal = eval?.signal;
     final direction = signal?.direction ?? TradeDirection.neutral;
-    final changeColor = (ticker?.changePercent24h ?? 0) >= 0
-        ? AppColors.buy
-        : AppColors.sell;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -106,25 +104,13 @@ class _SymbolCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    ticker == null ? '—' : Fmt.price(ticker.lastPrice),
-                    style: const TextStyle(
+                  LivePrice(
+                    listenable: app.priceListenable(symbol),
+                    fallback: ticker,
+                    priceStyle: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: Text(
-                      ticker == null
-                          ? ''
-                          : Fmt.pct(ticker.changePercent24h),
-                      style: TextStyle(
-                        color: changeColor,
-                        fontWeight: FontWeight.w600,
-                      ),
                     ),
                   ),
                   const Spacer(),

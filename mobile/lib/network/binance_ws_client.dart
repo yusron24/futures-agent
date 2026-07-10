@@ -19,6 +19,13 @@ class WsTickerEvent {
   const WsTickerEvent(this.ticker);
 }
 
+/// Tick harga per-transaksi dari stream `<symbol>@trade`.
+class WsTradeEvent {
+  final String symbol;
+  final double price;
+  const WsTradeEvent(this.symbol, this.price);
+}
+
 /// Status koneksi WebSocket untuk indikator UI.
 enum WsStatus { connecting, connected, disconnected }
 
@@ -58,10 +65,12 @@ class BinanceWsClient {
 
   final _candleController = StreamController<WsCandleEvent>.broadcast();
   final _tickerController = StreamController<WsTickerEvent>.broadcast();
+  final _tradeController = StreamController<WsTradeEvent>.broadcast();
   final _statusController = StreamController<WsStatus>.broadcast();
 
   Stream<WsCandleEvent> get candleStream => _candleController.stream;
   Stream<WsTickerEvent> get tickerStream => _tickerController.stream;
+  Stream<WsTradeEvent> get tradeStream => _tradeController.stream;
   Stream<WsStatus> get statusStream => _statusController.stream;
 
   /// Daftar nama stream (2 per simbol: kline_1h + miniTicker).
@@ -152,6 +161,10 @@ class BinanceWsClient {
         _candleController.add(WsCandleEvent(symbol, Candle.fromWsKline(k)));
       } else if (event == '24hrMiniTicker') {
         _tickerController.add(WsTickerEvent(SymbolTicker.fromMiniTicker(decoded)));
+      } else if (event == 'trade') {
+        final symbol = decoded['s'].toString();
+        final price = double.tryParse(decoded['p'].toString());
+        if (price != null) _tradeController.add(WsTradeEvent(symbol, price));
       } else if (decoded.containsKey('stream')) {
         // Fallback untuk format combined-stream (jika endpoint diganti).
         final data = decoded['data'];
@@ -165,6 +178,12 @@ class BinanceWsClient {
         } else if (stream.contains('@miniTicker')) {
           _tickerController
               .add(WsTickerEvent(SymbolTicker.fromMiniTicker(data)));
+        } else if (stream.contains('@trade')) {
+          final price = double.tryParse(data['p'].toString());
+          if (price != null) {
+            _tradeController
+                .add(WsTradeEvent((data['s'] ?? '').toString(), price));
+          }
         }
       }
     } catch (_) {
@@ -201,6 +220,19 @@ class BinanceWsClient {
     }
   }
 
+  /// Berlangganan stream tambahan (mis. `btcusdt@trade`) TANPA mengubah daftar
+  /// [symbols] utama. Aman dipanggil walau soket sedang tersambung.
+  void addStreams(List<String> streams) {
+    if (streams.isEmpty || _closedByUser) return;
+    _sendSubscribe(streams);
+  }
+
+  /// Batalkan langganan stream tambahan.
+  void removeStreams(List<String> streams) {
+    if (streams.isEmpty || _closedByUser) return;
+    _sendUnsubscribe(streams);
+  }
+
   Future<void> _teardownSocket() async {
     await _sub?.cancel();
     _sub = null;
@@ -215,6 +247,7 @@ class BinanceWsClient {
     _httpClient?.close(force: true);
     await _candleController.close();
     await _tickerController.close();
+    await _tradeController.close();
     await _statusController.close();
   }
 }

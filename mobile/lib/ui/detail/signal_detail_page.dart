@@ -5,22 +5,45 @@ import '../../config/format.dart';
 import '../../config/theme.dart';
 import '../../models/strategy_result.dart';
 import '../../state/app_state.dart';
+import '../widgets/live_price.dart';
 import '../widgets/signal_badge.dart';
 import 'candlestick_chart.dart';
 
-/// Halaman detail sinyal: chart candlestick 1h dengan garis Entry/SL/TP,
-/// level trade, R:R, dan ringkasan tiap strategi.
-class SignalDetailPage extends StatelessWidget {
+/// Halaman detail sinyal: chart candlestick dengan garis Entry/SL/TP, level
+/// trade, R:R, dan ringkasan tiap strategi. Saat terbuka, simbol ini
+/// dilanggankan stream `@trade` (harga bergerak per-transaksi, seperti Binance).
+class SignalDetailPage extends StatefulWidget {
   const SignalDetailPage({super.key, required this.symbol});
   final String symbol;
 
   @override
+  State<SignalDetailPage> createState() => _SignalDetailPageState();
+}
+
+class _SignalDetailPageState extends State<SignalDetailPage> {
+  late final AppState _app = context.read<AppState>();
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _app.focusSymbol(widget.symbol);
+    _focused = true;
+  }
+
+  @override
+  void dispose() {
+    if (_focused) _app.unfocusSymbol(widget.symbol);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final symbol = widget.symbol;
     final app = context.watch<AppState>();
     final eval = app.evaluationFor(symbol);
     final signal = eval?.signal;
     final candles = app.candles.candles(symbol);
-    final ticker = app.tickerFor(symbol);
 
     return Scaffold(
       appBar: AppBar(
@@ -41,22 +64,13 @@ class SignalDetailPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (ticker != null)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(Fmt.price(ticker.lastPrice),
-                    style: const TextStyle(
-                        fontSize: 26, fontWeight: FontWeight.w800)),
-                const SizedBox(width: 8),
-                Text(Fmt.pct(ticker.changePercent24h),
-                    style: TextStyle(
-                        color: ticker.changePercent24h >= 0
-                            ? AppColors.buy
-                            : AppColors.sell,
-                        fontWeight: FontWeight.w600)),
-              ],
-            ),
+          LivePrice(
+            listenable: app.priceListenable(symbol),
+            fallback: app.tickerFor(symbol),
+            priceStyle:
+                const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+            changeFontSize: 14,
+          ),
           const SizedBox(height: 16),
           Card(
             child: Padding(
@@ -131,7 +145,7 @@ class SignalDetailPage extends StatelessWidget {
       ),
     );
     if (ok == true) {
-      await app.ignoreSignal(symbol);
+      await app.ignoreSignal(widget.symbol);
       if (context.mounted) Navigator.pop(context);
     }
   }

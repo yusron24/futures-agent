@@ -32,8 +32,26 @@ class AppState extends ChangeNotifier {
   final BinanceRestClient rest;
   BinanceWsClient? _ws;
 
+  /// Simbol yang sedang dibuka di halaman Detail (dapat stream `@trade` ekstra).
+  String? _focusedSymbol;
+
   final Map<String, SymbolTicker> tickers = {};
   final Map<String, SymbolEvaluation> evaluations = {};
+
+  /// Notifier harga per-simbol: memungkinkan tiap baris/harga di UI rebuild
+  /// SEKETIKA saat ada tick, tanpa merebuild seluruh dashboard (mulus + hemat).
+  final Map<String, ValueNotifier<SymbolTicker?>> _priceNotifiers = {};
+
+  /// Listenable harga realtime satu simbol (dibuat lazy).
+  ValueListenable<SymbolTicker?> priceListenable(String symbol) =>
+      _priceNotifiers.putIfAbsent(
+          symbol, () => ValueNotifier<SymbolTicker?>(tickers[symbol]));
+
+  /// Satu-satunya penulis harga: perbarui map + notifier simbol seketika.
+  void _pushPrice(SymbolTicker t) {
+    tickers[t.symbol] = t;
+    _priceNotifiers[t.symbol]?.value = t;
+  }
 
   WsStatus wsStatus = WsStatus.disconnected;
   bool isOnline = true;
@@ -155,7 +173,7 @@ class AppState extends ChangeNotifier {
             syms.sublist(i, i + 50 > syms.length ? syms.length : i + 50);
         final ticks = await rest.fetch24hTickers(chunk);
         for (final t in ticks) {
-          tickers[t.symbol] = t;
+          _pushPrice(t);
         }
       }
 
@@ -245,11 +263,18 @@ class AppState extends ChangeNotifier {
     _ws = ws;
     _subs.add(ws.candleStream.listen(_onCandle));
     _subs.add(ws.tickerStream.listen(_onTicker));
+    _subs.add(ws.tradeStream.listen(_onTrade));
     _subs.add(ws.statusStream.listen((st) {
       wsStatus = st;
       _scheduleUiUpdate();
     }));
     await ws.connect();
+
+    // Pulihkan langganan trade untuk simbol yang sedang dibuka di Detail.
+    final focused = _focusedSymbol;
+    if (focused != null) {
+      ws.addStreams(['${focused.toLowerCase()}@trade']);
+    }
 
     _tickerPollTimer?.cancel();
     if (dataSaver) {
@@ -272,12 +297,12 @@ class AppState extends ChangeNotifier {
         for (final t in ticks) {
           final existing = tickers[t.symbol];
           // Pertahankan harga terbaru dari kline; ambil % perubahan dari REST.
-          tickers[t.symbol] = existing == null
+          _pushPrice(existing == null
               ? t
               : existing.copyWith(
                   changePercent24h: t.changePercent24h,
                   updatedAt: DateTime.now().millisecondsSinceEpoch,
-                );
+                ));
         }
       }
       isOnline = true;
@@ -296,14 +321,14 @@ class AppState extends ChangeNotifier {
     // di mode hemat bandwidth). % perubahan 24 jam dipertahankan apa adanya.
     final existing = tickers[e.symbol];
     final now = DateTime.now().millisecondsSinceEpoch;
-    tickers[e.symbol] = existing == null
+    _pushPrice(existing == null
         ? SymbolTicker(
             symbol: e.symbol,
             lastPrice: e.candle.close,
             changePercent24h: 0,
             updatedAt: now,
           )
-        : existing.copyWith(lastPrice: e.candle.close, updatedAt: now);
+        : existing.copyWith(lastPrice: e.candle.close, updatedAt: now));
 
     final newlyClosed = await candles.applyUpdate(e.symbol, e.candle);
     if (newlyClosed != null) {
@@ -315,8 +340,23 @@ class AppState extends ChangeNotifier {
   }
 
   void _onTicker(WsTickerEvent e) {
-    tickers[e.ticker.symbol] = e.ticker;
+    _pushPrice(e.ticker);
     _scheduleUiUpdate();
+  }
+
+  /// Tick harga per-transaksi (stream `@trade`) untuk simbol yang sedang dibuka
+  /// di halaman Detail — update harga sangat halus tanpa merebuild dashboard.
+  void _onTrade(WsTradeEvent e) {
+    final existing = tickers[e.symbol];
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _pushPrice(existing == null
+        ? SymbolTicker(
+            symbol: e.symbol,
+            lastPrice: e.price,
+            changePercent24h: 0,
+            updatedAt: now,
+          )
+        : existing.copyWith(lastPrice: e.price, updatedAt: now));
   }
 
   Future<void> _resolveAndEvaluate(
@@ -356,10 +396,15 @@ class AppState extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
-  /// Coalesce pembaruan UI frekuensi tinggi (ticker/candle berjalan).
+  /// Throttle pembaruan UI global frekuensi-tinggi (dot koneksi, banner, dll).
+  ///
+  /// PENTING: memakai throttle, BUKAN debounce. Debounce lama membatalkan timer
+  /// pada setiap tick sehingga saat banyak simbol nge-tick < 400 ms sekali,
+  /// `notifyListeners` tidak pernah menyala (UI beku, harga tampak diam sampai
+  /// refresh manual). Throttle menjamin flush berkala (maks ~4×/detik).
   void _scheduleUiUpdate() {
-    _uiCoalesce?.cancel();
-    _uiCoalesce = Timer(const Duration(milliseconds: 400), () {
+    if (_uiCoalesce?.isActive ?? false) return; // sudah terjadwal, jangan reset
+    _uiCoalesce = Timer(const Duration(milliseconds: 250), () {
       notifyListeners();
     });
   }
@@ -370,6 +415,24 @@ class AppState extends ChangeNotifier {
 
   SymbolEvaluation? evaluationFor(String symbol) => evaluations[symbol];
   SymbolTicker? tickerFor(String symbol) => tickers[symbol];
+
+  /// Buka fokus ke satu simbol (halaman Detail): langganan stream `@trade` agar
+  /// harga bergerak per-transaksi (sangat halus, seperti Binance).
+  void focusSymbol(String symbol) {
+    if (_focusedSymbol == symbol) return;
+    // Lepas fokus sebelumnya bila ada.
+    final prev = _focusedSymbol;
+    if (prev != null) _ws?.removeStreams(['${prev.toLowerCase()}@trade']);
+    _focusedSymbol = symbol;
+    _ws?.addStreams(['${symbol.toLowerCase()}@trade']);
+  }
+
+  /// Lepas fokus (keluar dari Detail): hentikan langganan `@trade`.
+  void unfocusSymbol(String symbol) {
+    if (_focusedSymbol != symbol) return;
+    _ws?.removeStreams(['${symbol.toLowerCase()}@trade']);
+    _focusedSymbol = null;
+  }
 
   Signal? signalFor(String symbol) => evaluations[symbol]?.signal;
 
@@ -461,6 +524,9 @@ class AppState extends ChangeNotifier {
     _tickerPollTimer?.cancel();
     for (final s in _subs) {
       s.cancel();
+    }
+    for (final n in _priceNotifiers.values) {
+      n.dispose();
     }
     _ws?.close();
     rest.close();
