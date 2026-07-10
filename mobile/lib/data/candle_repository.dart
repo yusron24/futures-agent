@@ -27,6 +27,14 @@ class CandleRepository {
     return c.isEmpty ? null : c.last;
   }
 
+  /// Kosongkan cache candle sebuah simbol (memori + Hive). Dipakai saat
+  /// timeframe/interval diubah agar tidak mencampur candle beda timeframe.
+  Future<void> clear(String symbol) async {
+    _memory.remove(symbol);
+    final box = await HiveCache.candleBox(symbol);
+    await box.clear();
+  }
+
   /// Ganti seluruh jendela (mis. setelah fetch REST awal).
   Future<void> replaceAll(String symbol, List<Candle> fresh) async {
     final trimmed = _trim(List.of(fresh)

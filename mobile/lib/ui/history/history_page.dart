@@ -44,6 +44,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 _stat('Total', '${stats.total}', AppColors.textPrimary),
                 _stat('Win rate', '${stats.winRate.toStringAsFixed(0)}%',
                     AppColors.primary),
+                _stat('Profit factor', _pfLabel(stats), AppColors.warning),
                 _stat('TP', '${stats.tp}', AppColors.buy),
                 _stat('SL', '${stats.sl}', AppColors.sell),
               ],
@@ -84,6 +85,13 @@ class _HistoryPageState extends State<HistoryPage> {
         ],
       ),
     );
+  }
+
+  String _pfLabel(dynamic stats) {
+    final pf = stats.profitFactor as double?;
+    if (pf != null) return pf.toStringAsFixed(2);
+    // Belum ada rugi: ∞ bila sudah ada laba, selain itu N/A.
+    return (stats.totalProfit as double) > 0 ? '∞' : 'N/A';
   }
 
   bool _matches(Signal s) {
@@ -162,8 +170,10 @@ class _HistoryTile extends StatelessWidget {
         return 'TP ✓';
       case SignalOutcome.slHit:
         return 'SL ✕';
+      case SignalOutcome.ignored:
+        return 'DIRESET';
       default:
-        return 'PENDING';
+        return 'RUNNING';
     }
   }
 

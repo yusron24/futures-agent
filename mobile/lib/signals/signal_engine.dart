@@ -79,19 +79,11 @@ class SignalEngine {
     final dirResults = isBuy ? buyResults : sellResults;
     final entry = closedCandles.last.close;
 
-    // SL terketat (memaksimalkan R:R): untuk BUY = stop tertinggi (terdekat ke
-    // entry dari bawah); untuk SELL = stop terendah (terdekat ke entry dari
-    // atas). Namun jika terlalu ketat sehingga risiko ~0, ambil fallback.
+    // SL terketat (terdekat ke entry): untuk BUY = stop tertinggi; untuk SELL =
+    // stop terendah. Bila terlalu ketat (risiko ~0), pakai fallback aman.
     double stop = isBuy
         ? dirResults.map((r) => r.stopLoss).reduce((a, b) => a > b ? a : b)
         : dirResults.map((r) => r.stopLoss).reduce((a, b) => a < b ? a : b);
-
-    // TP terjauh yang masuk akal.
-    final target = isBuy
-        ? dirResults.map((r) => r.takeProfit).reduce((a, b) => a > b ? a : b)
-        : dirResults.map((r) => r.takeProfit).reduce((a, b) => a < b ? a : b);
-
-    // Validasi geometri: pastikan stop di sisi benar terhadap entry.
     if (isBuy && stop >= entry) {
       stop = dirResults
           .map((r) => r.stopLoss)
@@ -105,25 +97,29 @@ class SignalEngine {
           .fold<double>(entry * 1.01, (a, b) => a > b ? a : b);
     }
 
+    // RR TETAP 1:2,5 — invariant utama aplikasi: TP dinormalkan ke persis
+    // 2,5× jarak risiko dari SL terketat.
     final risk = (entry - stop).abs();
-    final reward = (target - entry).abs();
-    final rr = risk == 0 ? 0.0 : reward / risk;
+    final target = isBuy
+        ? entry + fixedRiskReward * risk
+        : entry - fixedRiskReward * risk;
 
-    // Keyakinan teragregasi: probabilistic OR dari bobot ternormalisasi,
-    // sehingga kesepakatan banyak strategi menaikkan keyakinan.
-    double agreement = 1.0;
+    // Keyakinan = rata-rata tertimbang (akurasi historis × keyakinan individual)
+    // dari strategi searah. Bonus kecil bila ≥2 strategi sepakat.
+    double weightSum = 0, confWeighted = 0;
     for (final r in dirResults) {
-      final w =
-          _history.baseAccuracy(r.strategyId) * (r.confidence / 100.0);
-      agreement *= (1 - w.clamp(0, 0.99));
+      final acc = _history.baseAccuracy(r.strategyId);
+      weightSum += acc;
+      confWeighted += acc * r.confidence;
     }
-    double confidence = (1 - agreement) * 100;
-    // Bonus kecil bila lebih dari satu strategi searah.
-    if (dirResults.length >= 2) confidence = (confidence + 5).clamp(0, 100);
+    double confidence = weightSum == 0
+        ? dirResults.first.confidence
+        : confWeighted / weightSum;
+    if (dirResults.length >= 2) confidence = (confidence + 5);
     confidence = confidence.clamp(0, 100);
 
     final note = dirResults.length >= 2
-        ? '${dirResults.length} strategi searah'
+        ? '${dirResults.length} strategi searah (RR 1:2,5)'
         : dirResults.first.note;
 
     final signal = Signal(
@@ -133,13 +129,16 @@ class SignalEngine {
       stopLoss: stop,
       takeProfit: target,
       confidence: confidence,
-      riskReward: rr,
+      riskReward: fixedRiskReward,
       triggeredStrategies: dirResults.map((r) => r.strategyId).toList(),
       timestamp: ts,
       note: note,
     );
     return SymbolEvaluation(signal, results);
   }
+
+  /// Rasio Risk:Reward tetap untuk setiap sinyal teragregasi (1:2,5).
+  static const double fixedRiskReward = 2.5;
 
   Signal _neutral(String symbol, int ts, String note) => Signal(
         symbol: symbol,

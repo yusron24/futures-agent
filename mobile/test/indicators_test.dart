@@ -98,5 +98,41 @@ void main() {
       final cur = _c(1, 9.5, 10.6, 9.4, 10.5, 120); // bullish engulf
       expect(Indicators.isBullishEngulfing(prev, cur), true);
     });
+
+    test('ADX high & +DI dominant for strong uptrend', () {
+      final s = _series(List<double>.generate(60, (i) => 100 + i.toDouble()));
+      final adx = Indicators.adx(s, period: 14);
+      expect(adx.adx.last.isNaN, false);
+      expect(adx.adx.last, greaterThan(25));
+      expect(adx.adx.last, lessThanOrEqualTo(100));
+      expect(adx.plusDi.last, greaterThan(adx.minusDi.last));
+    });
+
+    test('keyHorizontalLevels finds a repeated resistance', () {
+      final closes = <double>[];
+      // 4 puncak berulang di ~110 (masing-masing dikelilingi lembah lebih rendah).
+      for (int k = 0; k < 4; k++) {
+        closes.addAll([100, 105, 110, 105]);
+      }
+      closes.add(100);
+      final s = _series(closes);
+      final levels = Indicators.keyHorizontalLevels(s,
+          lookback: 100, tol: 0.01, minTouches: 3);
+      expect(levels.isNotEmpty, true);
+      final near110 = levels.any((l) => (l - 110).abs() / 110 <= 0.01);
+      expect(near110, true);
+    });
+
+    test('Morning & evening star detection', () {
+      final c1Bear = _c(0, 110, 110.5, 99.5, 100, 100); // bearish besar
+      final c2Small = _c(1, 99, 99.5, 98, 98.5, 90); // indecision kecil
+      final c3Bull = _c(2, 99, 106.5, 98.8, 106, 130); // bullish tutup > mid
+      expect(Indicators.isMorningStar(c1Bear, c2Small, c3Bull), true);
+
+      final e1Bull = _c(0, 100, 110.5, 99.5, 110, 100); // bullish besar
+      final e2Small = _c(1, 111, 112, 110.5, 111.5, 90); // kecil
+      final e3Bear = _c(2, 111, 111.2, 103.5, 104, 130); // bearish tutup < mid
+      expect(Indicators.isEveningStar(e1Bull, e2Small, e3Bear), true);
+    });
   });
 }

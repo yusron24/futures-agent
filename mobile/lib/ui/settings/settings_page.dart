@@ -29,7 +29,37 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _sectionTitle('Strategi Scalping'),
+          _sectionTitle('Timeframe Swing'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                      'Timeframe candle untuk semua strategi. Mengubah ini '
+                      'memuat ulang data candle dari awal.',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12)),
+                  const SizedBox(height: 12),
+                  SegmentedButton<String>(
+                    segments: AppConfig.allowedIntervals
+                        .map((iv) => ButtonSegment<String>(
+                              value: iv,
+                              label: Text(AppConfig.intervalLabel(iv)),
+                            ))
+                        .toList(),
+                    selected: {s.interval},
+                    onSelectionChanged: (sel) {
+                      if (sel.isNotEmpty) app.setInterval(sel.first);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          _sectionTitle('Strategi Swing'),
           Card(
             child: Column(
               children: [
@@ -120,7 +150,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   value: s.notificationsEnabled,
                   onChanged: (v) => setState(() => s.notificationsEnabled = v),
                   title: const Text('Notifikasi sinyal'),
-                  subtitle: const Text('Saat candle 1 jam ditutup & sinyal muncul'),
+                  subtitle: Text(
+                      'Saat candle ${AppConfig.intervalLabel(s.interval)} '
+                      'ditutup & sinyal muncul'),
                   activeThumbColor: AppColors.primary,
                 ),
                 const Divider(height: 1),

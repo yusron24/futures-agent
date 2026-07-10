@@ -26,13 +26,14 @@ class SignalAdapter extends TypeAdapter<Signal> {
       note: fields[9] as String? ?? '',
       outcome: fields[10] as String? ?? SignalOutcome.pending,
       resolvedAt: fields[11] as int? ?? 0,
+      profitLoss: (fields[12] as num?)?.toDouble() ?? 0,
     );
   }
 
   @override
   void write(BinaryWriter writer, Signal obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.symbol)
       ..writeByte(1)
@@ -56,7 +57,9 @@ class SignalAdapter extends TypeAdapter<Signal> {
       ..writeByte(10)
       ..write(obj.outcome)
       ..writeByte(11)
-      ..write(obj.resolvedAt);
+      ..write(obj.resolvedAt)
+      ..writeByte(12)
+      ..write(obj.profitLoss);
   }
 
   @override

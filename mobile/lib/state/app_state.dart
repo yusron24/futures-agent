@@ -7,6 +7,7 @@ import '../data/candle_repository.dart';
 import '../data/settings_repository.dart';
 import '../data/signal_history_repository.dart';
 import '../models/signal.dart';
+import '../models/strategy_result.dart';
 import '../models/symbol_ticker.dart';
 import '../network/binance_rest_client.dart';
 import '../network/binance_ws_client.dart';
@@ -169,8 +170,11 @@ class AppState extends ChangeNotifier {
             _evaluateSymbol(s, notify: false);
             return;
           }
-          final kl =
-              await rest.fetchKlines(s, limit: AppConfig.restWarmupCandles);
+          final kl = await rest.fetchKlines(
+            s,
+            limit: AppConfig.restWarmupCandles,
+            interval: settings.interval,
+          );
           if (kl.isNotEmpty) {
             await candles.replaceAll(s, kl);
             await _resolveAndEvaluate(s, notify: false);
@@ -186,15 +190,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Apakah cache candle sebuah simbol sudah mutakhir (candle 1 jam terakhir
+  /// Apakah cache candle sebuah simbol sudah mutakhir (candle timeframe terakhir
   /// yang tertutup sudah ada) sehingga tidak perlu di-fetch ulang.
   bool _isFresh(String symbol) {
     final closed = candles.closedCandles(symbol);
     if (closed.length < AppConfig.minReadyCandles) return false;
-    const hourMs = 3600000;
+    final stepMs = AppConfig.intervalMs(settings.interval);
     final now = DateTime.now().millisecondsSinceEpoch;
-    final currentHourStart = (now ~/ hourMs) * hourMs;
-    final expectedLastClosedOpen = currentHourStart - hourMs;
+    final currentStepStart = (now ~/ stepMs) * stepMs;
+    final expectedLastClosedOpen = currentStepStart - stepMs;
     return closed.last.openTime >= expectedLastClosedOpen;
   }
 
@@ -233,7 +237,11 @@ class AppState extends ChangeNotifier {
     // per simbol). Harga tetap live dari stream kline; perubahan 24 jam
     // diperbarui berkala via REST ringan.
     final dataSaver = settings.dataSaver;
-    final ws = BinanceWsClient(symbols, includeMiniTicker: !dataSaver);
+    final ws = BinanceWsClient(
+      symbols,
+      includeMiniTicker: !dataSaver,
+      interval: settings.interval,
+    );
     _ws = ws;
     _subs.add(ws.candleStream.listen(_onCandle));
     _subs.add(ws.tickerStream.listen(_onTicker));
@@ -380,6 +388,55 @@ class AppState extends ChangeNotifier {
     for (final s in symbols) {
       _evaluateSymbol(s, notify: false);
     }
+    notifyListeners();
+  }
+
+  /// Ganti timeframe/interval candle. Karena cache candle di-key per simbol
+  /// (bukan per interval), cache lama harus dikosongkan agar tidak mencampur
+  /// timeframe; lalu warmup ulang via REST + sambung ulang WS.
+  Future<void> setInterval(String interval) async {
+    if (interval == settings.interval) return;
+    if (!AppConfig.allowedIntervals.contains(interval)) return;
+    settings.interval = interval;
+    // Reset guard background agar candle baru diproses ulang di jam/step ini.
+    settings.bgLastProcessedHour = 0;
+    isLoading = true;
+    evaluations.clear();
+    notifyListeners();
+    for (final s in symbols) {
+      await candles.clear(s);
+    }
+    await refreshAll();
+    await _connectWs();
+    isLoading = false;
+    notifyListeners();
+  }
+
+  /// "Reset sinyal": abaikan sinyal aktif sebuah simbol. Ditandai `ignored`
+  /// (tidak ikut statistik) & disingkirkan dari dashboard; candle/strategi tetap
+  /// tersimpan sehingga simbol bisa memunculkan sinyal baru kemudian.
+  Future<void> ignoreSignal(String symbol) async {
+    final eval = evaluations[symbol];
+    final signal = eval?.signal;
+    if (signal != null && signal.isActionable) {
+      await history.ignore(signal);
+    }
+    // Ganti evaluasi jadi netral agar hilang dari dashboard sampai setup baru.
+    evaluations[symbol] = SymbolEvaluation(
+      Signal(
+        symbol: symbol,
+        direction: TradeDirection.neutral,
+        entry: 0,
+        stopLoss: 0,
+        takeProfit: 0,
+        confidence: 0,
+        riskReward: 0,
+        triggeredStrategies: const [],
+        timestamp: signal?.timestamp ?? 0,
+        note: 'Sinyal di-reset pengguna',
+      ),
+      eval?.results ?? const [],
+    );
     notifyListeners();
   }
 
