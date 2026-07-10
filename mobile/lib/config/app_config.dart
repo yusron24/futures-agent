@@ -87,6 +87,11 @@ class AppConfig {
   /// tidak perlu di-fetch ulang saat refresh bila cache sudah mutakhir.
   static const int minReadyCandles = 290;
 
+  /// Ambang keyakinan minimal (0..100) agar sebuah sinyal dianggap AKTIF.
+  /// Sinyal teragregasi dengan keyakinan di bawah ini dijadikan NEUTRAL
+  /// (tidak tampil, tidak notifikasi, tidak masuk riwayat).
+  static const double minSignalConfidence = 70;
+
   /// Simbol default yang dipantau (fallback saat mode kustom / sebelum daftar
   /// top-volume berhasil diambil). Catatan: MATIC sudah di-rename menjadi POL di
   /// Binance, sehingga dipakai POLUSDT.
