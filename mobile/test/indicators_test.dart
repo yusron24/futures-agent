@@ -109,13 +109,22 @@ void main() {
     });
 
     test('keyHorizontalLevels finds a repeated resistance', () {
-      final closes = <double>[];
-      // 4 puncak berulang di ~110 (masing-masing dikelilingi lembah lebih rendah).
-      for (int k = 0; k < 4; k++) {
-        closes.addAll([100, 105, 110, 105]);
-      }
-      closes.add(100);
-      final s = _series(closes);
+      // Candle dibangun eksplisit agar puncak (high) membentuk pivot bersih —
+      // hindari degenerasi _series (candle setelah puncak ber-high sama).
+      Candle cHL(int i, double high, double low) => _c(
+            i * 14400000,
+            low + (high - low) * 0.3, // open
+            high,
+            low,
+            high - (high - low) * 0.3, // close
+            100 + i.toDouble(),
+          );
+      // 3 puncak high=110 dikelilingi high lebih rendah → 3 swing high di 110.
+      final pattern = <double>[101, 105, 110, 105, 101, 105, 110, 105, 101, 105,
+        110, 105, 101];
+      final s = <Candle>[
+        for (int i = 0; i < pattern.length; i++) cHL(i, pattern[i], pattern[i] - 3),
+      ];
       final levels = Indicators.keyHorizontalLevels(s,
           lookback: 100, tol: 0.01, minTouches: 3);
       expect(levels.isNotEmpty, true);
