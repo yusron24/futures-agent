@@ -67,6 +67,20 @@ class SignalDetailPage extends StatelessWidget {
           const SizedBox(height: 16),
           if (signal != null && signal.isActionable) ...[
             _TradePlan(signal: signal, app: app),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.sell,
+                  side: BorderSide(
+                      color: AppColors.sell.withValues(alpha: 0.5)),
+                ),
+                onPressed: () => _confirmReset(context, app),
+                icon: const Icon(Icons.restart_alt),
+                label: const Text('Reset sinyal'),
+              ),
+            ),
             const SizedBox(height: 16),
           ] else
             Card(
@@ -93,6 +107,33 @@ class SignalDetailPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmReset(BuildContext context, AppState app) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Reset sinyal?'),
+        content: const Text(
+            'Sinyal aktif ini akan diabaikan (tidak ikut statistik) dan hilang '
+            'dari dashboard. Simbol tetap dipantau & dapat memunculkan sinyal '
+            'baru nanti.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Batal')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Reset',
+                  style: TextStyle(color: AppColors.sell))),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await app.ignoreSignal(symbol);
+      if (context.mounted) Navigator.pop(context);
+    }
   }
 }
 

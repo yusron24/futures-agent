@@ -7,16 +7,18 @@ import 'services/foreground_service.dart';
 import 'state/app_state.dart';
 import 'ui/dashboard/dashboard_page.dart';
 import 'ui/history/history_page.dart';
+import 'ui/risk/risk_management_page.dart';
 import 'ui/settings/settings_page.dart';
 
-/// Root aplikasi: tema gelap + navigasi bawah (Dashboard / Riwayat / Pengaturan).
+/// Root aplikasi: tema gelap + navigasi bawah
+/// (Dashboard / Riwayat / Risiko / Pengaturan).
 class ScalpSignalsApp extends StatelessWidget {
   const ScalpSignalsApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Scalp Signals',
+      title: 'Swing Signals',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       themeMode: ThemeMode.dark,
@@ -37,6 +39,7 @@ class _HomeShellState extends State<_HomeShell> with WidgetsBindingObserver {
   final _pages = const [
     DashboardPage(),
     HistoryPage(),
+    RiskManagementPage(),
     SettingsPage(),
   ];
 
@@ -86,11 +89,14 @@ class _HomeShellState extends State<_HomeShell> with WidgetsBindingObserver {
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _index,
           onTap: (i) => setState(() => _index = i),
+          type: BottomNavigationBarType.fixed,
           items: const [
             BottomNavigationBarItem(
                 icon: Icon(Icons.dashboard_outlined), label: 'Dashboard'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.history), label: 'Riwayat'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.calculate_outlined), label: 'Risiko'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.settings_outlined), label: 'Pengaturan'),
           ],

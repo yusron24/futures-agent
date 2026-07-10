@@ -42,33 +42,63 @@ class AppConfig {
   // ---------------------------------------------------------------------------
   // DATA / CANDLE
   // ---------------------------------------------------------------------------
-  /// Timeframe utama untuk semua strategi.
-  static const String interval = '1h';
+  /// Timeframe swing default untuk semua strategi. Dapat diubah pengguna ke
+  /// salah satu dari [allowedIntervals] di Pengaturan.
+  static const String defaultInterval = '4h';
+
+  /// Timeframe yang boleh dipilih pengguna.
+  static const List<String> allowedIntervals = <String>['1h', '4h', '1d'];
+
+  /// Durasi satu candle (ms) untuk sebuah interval. Dipakai untuk "candle-guard"
+  /// (mendeteksi batas candle baru) di refresh & background.
+  static int intervalMs(String interval) {
+    switch (interval) {
+      case '1h':
+        return 3600000;
+      case '1d':
+        return 86400000;
+      case '4h':
+      default:
+        return 14400000;
+    }
+  }
+
+  /// Label ramah-pengguna untuk sebuah interval.
+  static String intervalLabel(String interval) {
+    switch (interval) {
+      case '1h':
+        return '1 Jam';
+      case '1d':
+        return '1 Hari';
+      case '4h':
+      default:
+        return '4 Jam';
+    }
+  }
 
   /// Jendela candle lokal maksimal per simbol yang disimpan di cache.
   static const int candleWindow = 500;
 
-  /// Jumlah candle yang diambil via REST saat warmup/refresh. Jauh lebih kecil
-  /// dari [candleWindow] untuk menghemat bandwidth (strategi paling banyak
-  /// butuh ~210 candle; sisanya diisi bertahap oleh WebSocket). Ini memangkas
-  /// data yang lewat proxy hingga ~40% saat refresh.
+  /// Jumlah candle yang diambil via REST saat warmup/refresh. Minimal 300 per
+  /// simbol agar indikator swing (mis. EMA200 + slope) valid.
   static const int restWarmupCandles = 300;
 
   /// Ambang minimal candle tertutup agar sebuah simbol dianggap "siap" dan
   /// tidak perlu di-fetch ulang saat refresh bila cache sudah mutakhir.
-  static const int minReadyCandles = 260;
+  static const int minReadyCandles = 290;
 
   /// Simbol default yang dipantau (fallback saat mode kustom / sebelum daftar
-  /// top-volume berhasil diambil).
+  /// top-volume berhasil diambil). Catatan: MATIC sudah di-rename menjadi POL di
+  /// Binance, sehingga dipakai POLUSDT.
   static const List<String> defaultSymbols = <String>[
     'BTCUSDT',
     'ETHUSDT',
     'BNBUSDT',
     'SOLUSDT',
     'ADAUSDT',
-    'DOGEUSDT',
-    'XRPUSDT',
-    'AVAXUSDT',
+    'POLUSDT',
+    'DOTUSDT',
+    'LINKUSDT',
   ];
 
   /// Jumlah pair top-volume yang dipantau saat mode "Top Volume".
@@ -99,7 +129,7 @@ class AppConfig {
   // PEMBARUAN APLIKASI (GitHub Releases)
   // ---------------------------------------------------------------------------
   /// Versi aplikasi saat ini (samakan dengan `version` di pubspec.yaml).
-  static const String appVersion = '1.1.0';
+  static const String appVersion = '2.0.0';
 
   static const String repoOwner = 'yusron24';
   static const String repoName = 'futures-agent';

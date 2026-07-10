@@ -19,7 +19,7 @@ class BinanceRestClient {
   /// Binance membatasi 1000 candle per permintaan; untuk >1000 dilakukan paging.
   Future<List<Candle>> fetchKlines(
     String symbol, {
-    String interval = AppConfig.interval,
+    String interval = AppConfig.defaultInterval,
     int limit = AppConfig.candleWindow,
     int? endTime,
   }) async {

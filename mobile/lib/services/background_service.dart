@@ -65,11 +65,11 @@ class BackgroundService {
     final settings = SettingsRepository();
     if (!settings.notificationsEnabled) return;
 
-    // Hour-guard: keluar cepat bila jam ini sudah diproses.
-    const hourMs = 3600000;
-    final currentHourStart =
-        (DateTime.now().millisecondsSinceEpoch ~/ hourMs) * hourMs;
-    if (settings.bgLastProcessedHour >= currentHourStart) return;
+    // Candle-guard: keluar cepat bila step candle timeframe ini sudah diproses.
+    final stepMs = AppConfig.intervalMs(settings.interval);
+    final currentStepStart =
+        (DateTime.now().millisecondsSinceEpoch ~/ stepMs) * stepMs;
+    if (settings.bgLastProcessedHour >= currentStepStart) return;
 
     final candles = CandleRepository();
     final history = SignalHistoryRepository();
@@ -94,17 +94,19 @@ class BackgroundService {
 
         // Probe murah: 2 candle terakhir cukup untuk tahu apakah ada candle
         // baru yang tertutup sejak pengecekan sebelumnya.
-        final probe = await rest.fetchKlines(symbol, limit: 2);
+        final probe =
+            await rest.fetchKlines(symbol, limit: 2, interval: settings.interval);
         if (probe.isEmpty) continue;
         final probeNewestClosed =
             probe.lastWhere((c) => c.isClosed, orElse: () => probe.first);
         if (probeNewestClosed.openTime <= lastClosedTime) {
-          processedAny = true; // sudah mutakhir untuk jam ini
+          processedAny = true; // sudah mutakhir untuk step ini
           continue;
         }
 
-        // Ada candle baru -> baru sekarang unduh jendela penuh (sekali/jam).
-        final fresh = await rest.fetchKlines(symbol, limit: 300);
+        // Ada candle baru -> baru sekarang unduh jendela penuh (sekali/step).
+        final fresh = await rest.fetchKlines(symbol,
+            limit: AppConfig.restWarmupCandles, interval: settings.interval);
         if (fresh.isEmpty) continue;
         await candles.replaceAll(symbol, fresh);
         processedAny = true;
@@ -127,7 +129,7 @@ class BackgroundService {
         }
       }
       if (processedAny) {
-        settings.bgLastProcessedHour = currentHourStart;
+        settings.bgLastProcessedHour = currentStepStart;
       }
     } finally {
       rest.close();

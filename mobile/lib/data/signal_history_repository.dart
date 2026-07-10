@@ -101,8 +101,13 @@ class SignalHistoryRepository {
           }
         }
         if (outcome != null) {
-          final updated =
-              s.copyWith(outcome: outcome, resolvedAt: c.closeTime);
+          // Laba/rugi dalam kelipatan-R: +riskReward saat TP, −1 saat SL.
+          final pl = outcome == SignalOutcome.tpHit ? s.riskReward : -1.0;
+          final updated = s.copyWith(
+            outcome: outcome,
+            resolvedAt: c.closeTime,
+            profitLoss: pl,
+          );
           await _box.put(updated.key, updated);
           await _recordOutcome(
             s.triggeredStrategies,
@@ -116,23 +121,43 @@ class SignalHistoryRepository {
     return resolved;
   }
 
-  /// Statistik agregat untuk halaman Riwayat.
+  /// Tandai sebuah sinyal sebagai diabaikan (tombol "Reset sinyal"). Sinyal
+  /// tetap tersimpan namun dikecualikan dari statistik & tidak aktif lagi.
+  Future<void> ignore(Signal s) async {
+    final updated = s.copyWith(outcome: SignalOutcome.ignored, profitLoss: 0);
+    await _box.put(updated.key, updated);
+  }
+
+  /// Statistik agregat untuk halaman Riwayat. Sinyal berstatus `ignored`
+  /// dikecualikan; `pending` dihitung sebagai "running".
   HistoryStats stats() {
     final list = all();
-    int tp = 0, sl = 0, pending = 0;
+    int total = 0, tp = 0, sl = 0, pending = 0;
+    double totalProfit = 0, totalLoss = 0;
     for (final s in list) {
+      if (s.outcome == SignalOutcome.ignored) continue;
+      total++;
       switch (s.outcome) {
         case SignalOutcome.tpHit:
           tp++;
+          totalProfit += s.profitLoss > 0 ? s.profitLoss : 0;
           break;
         case SignalOutcome.slHit:
           sl++;
+          totalLoss += s.profitLoss < 0 ? -s.profitLoss : 0;
           break;
         default:
           pending++;
       }
     }
-    return HistoryStats(total: list.length, tp: tp, sl: sl, pending: pending);
+    return HistoryStats(
+      total: total,
+      tp: tp,
+      sl: sl,
+      pending: pending,
+      totalProfit: totalProfit,
+      totalLoss: totalLoss,
+    );
   }
 
   Future<void> clear() async => _box.clear();
@@ -143,15 +168,26 @@ class HistoryStats {
   final int tp;
   final int sl;
   final int pending;
+  final double totalProfit; // total laba (kelipatan-R)
+  final double totalLoss; // total rugi absolut (kelipatan-R)
   const HistoryStats({
     required this.total,
     required this.tp,
     required this.sl,
     required this.pending,
+    this.totalProfit = 0,
+    this.totalLoss = 0,
   });
 
   double get winRate {
     final resolved = tp + sl;
     return resolved == 0 ? 0 : tp / resolved * 100;
+  }
+
+  /// Profit factor = total laba / total rugi. Null bila belum ada rugi
+  /// (ditampilkan sebagai "∞"/"N/A" di UI).
+  double? get profitFactor {
+    if (totalLoss <= 0) return null;
+    return totalProfit / totalLoss;
   }
 }

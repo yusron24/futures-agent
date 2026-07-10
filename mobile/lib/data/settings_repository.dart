@@ -5,6 +5,7 @@ import 'hive_cache.dart';
 /// Repositori pengaturan pengguna yang bertahan lintas sesi (Hive).
 class SettingsRepository {
   static const _kEnabledStrategies = 'enabled_strategies';
+  static const _kInterval = 'interval';
   static const _kSymbols = 'symbols';
   static const _kRiskPercent = 'risk_percent';
   static const _kCapital = 'sim_capital';
@@ -36,6 +37,20 @@ class SettingsRepository {
       _box.put(_kEnabledStrategies, ids);
 
   bool isStrategyEnabled(String id) => enabledStrategies.contains(id);
+
+  // --- Timeframe / interval candle ---
+  /// Timeframe swing aktif ('1h' / '4h' / '1d'). Default [AppConfig.defaultInterval].
+  String get interval {
+    final v = _box.get(_kInterval, defaultValue: AppConfig.defaultInterval)
+        as String;
+    return AppConfig.allowedIntervals.contains(v)
+        ? v
+        : AppConfig.defaultInterval;
+  }
+
+  set interval(String v) {
+    if (AppConfig.allowedIntervals.contains(v)) _box.put(_kInterval, v);
+  }
 
   void setStrategyEnabled(String id, bool enabled) {
     final set = enabledStrategies.toSet();

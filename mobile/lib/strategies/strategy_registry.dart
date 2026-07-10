@@ -1,21 +1,21 @@
-import 'bollinger_squeeze_breakout.dart';
-import 'ema_pullback_rsi_divergence.dart';
-import 'macd_zeroline_engulfing.dart';
-import 'stochastic_pinbar_reversal.dart';
+import 'breakout_key_level_volume.dart';
+import 'double_bottom_top.dart';
+import 'macd_divergence.dart';
+import 'ma_crossover_adx.dart';
+import 'pullback_ema200_support.dart';
 import 'strategy.dart';
-import 'volume_profile_flip.dart';
 
-/// Daftar tunggal semua strategi yang tersedia. Urutan menentukan tampilan di
-/// Pengaturan.
+/// Daftar tunggal semua strategi swing yang tersedia. Urutan menentukan
+/// tampilan di Pengaturan.
 class StrategyRegistry {
   StrategyRegistry._();
 
   static final List<Strategy> all = <Strategy>[
-    EmaPullbackRsiDivergence(),
-    BollingerSqueezeBreakout(),
-    MacdZeroLineEngulfing(),
-    VolumeProfileFlip(),
-    StochasticPinBarReversal(),
+    BreakoutKeyLevelVolume(),
+    PullbackEma200Support(),
+    MacdDivergence(),
+    DoubleBottomTop(),
+    MaCrossoverAdx(),
   ];
 
   static Strategy? byId(String id) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../config/app_config.dart';
 import '../../config/format.dart';
 import '../../config/theme.dart';
 import '../../models/strategy_result.dart';
@@ -20,7 +21,18 @@ class DashboardPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scalp Signals'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Swing Signals'),
+            Text('Timeframe ${AppConfig.intervalLabel(app.settings.interval)} · RR 1:2,5',
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                    color: AppColors.textSecondary)),
+          ],
+        ),
         actions: [
           _ConnectionDot(status: app.wsStatus, online: app.isOnline),
           const SizedBox(width: 12),

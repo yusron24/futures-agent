@@ -8,6 +8,9 @@ class SignalOutcome {
   static const String tpHit = 'TP_HIT';
   static const String slHit = 'SL_HIT';
   static const String expired = 'EXPIRED';
+
+  /// Diabaikan pengguna (tombol "Reset sinyal"). Tidak ikut statistik.
+  static const String ignored = 'IGNORED';
 }
 
 /// Sinyal teragregasi final yang ditampilkan di UI dan disimpan ke riwayat.
@@ -52,6 +55,12 @@ class Signal {
   @HiveField(11)
   final int resolvedAt;
 
+  /// Laba/rugi terealisasi dalam kelipatan-R (RR-agnostik): +riskReward saat TP,
+  /// −1 saat SL, 0 bila belum selesai/diabaikan. Dipakai menghitung profit
+  /// factor riwayat.
+  @HiveField(12)
+  final double profitLoss;
+
   const Signal({
     required this.symbol,
     required this.direction,
@@ -65,6 +74,7 @@ class Signal {
     this.note = '',
     this.outcome = SignalOutcome.pending,
     this.resolvedAt = 0,
+    this.profitLoss = 0,
   });
 
   bool get isActionable =>
@@ -72,7 +82,8 @@ class Signal {
 
   bool get isBuy => direction == 'BUY';
 
-  Signal copyWith({String? outcome, int? resolvedAt}) => Signal(
+  Signal copyWith({String? outcome, int? resolvedAt, double? profitLoss}) =>
+      Signal(
         symbol: symbol,
         direction: direction,
         entry: entry,
@@ -85,6 +96,7 @@ class Signal {
         note: note,
         outcome: outcome ?? this.outcome,
         resolvedAt: resolvedAt ?? this.resolvedAt,
+        profitLoss: profitLoss ?? this.profitLoss,
       );
 
   DateTime get time =>
