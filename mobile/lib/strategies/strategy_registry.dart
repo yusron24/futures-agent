@@ -1,5 +1,6 @@
 import 'breakout_key_level_volume.dart';
 import 'double_bottom_top.dart';
+import 'liquidity_swap_sniper_entry.dart';
 import 'macd_divergence.dart';
 import 'ma_crossover_adx.dart';
 import 'pullback_ema200_support.dart';
@@ -16,6 +17,7 @@ class StrategyRegistry {
     MacdDivergence(),
     DoubleBottomTop(),
     MaCrossoverAdx(),
+    LiquiditySwapSniperEntry(),
   ];
 
   static Strategy? byId(String id) {
