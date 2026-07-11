@@ -47,6 +47,8 @@ class DashboardPage extends StatelessWidget {
             : ListView(
                 padding: const EdgeInsets.all(12),
                 children: [
+                  if (app.signalsHeld)
+                    _SafeModeBanner(reason: app.healthReason),
                   if (app.errorMessage != null)
                     _OfflineBanner(message: app.errorMessage!),
                   ...app.symbols.map((s) => _SymbolCard(symbol: s)),
@@ -187,6 +189,34 @@ class _ConnectionDot extends StatelessWidget {
         Text(label,
             style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
       ],
+    );
+  }
+}
+
+class _SafeModeBanner extends StatelessWidget {
+  const _SafeModeBanner({required this.reason});
+  final String reason;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.sell.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.sell.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.shield_outlined, color: AppColors.sell, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('Mode aman — sinyal ditahan ($reason)',
+                style: const TextStyle(color: AppColors.sell, fontSize: 12)),
+          ),
+        ],
+      ),
     );
   }
 }

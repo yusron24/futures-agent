@@ -104,6 +104,20 @@ class AppConfig {
   static const double vwapMult2 = 2.0;
   static const double vwapMult3 = 3.0;
 
+  // ---------------------------------------------------------------------------
+  // KEAMANAN SINYAL (Fase 1): gerbang mutu data, cooldown, circuit breaker.
+  // ---------------------------------------------------------------------------
+  static const bool dataQualityStrictDefault = true;
+  static const bool cooldownEnabledDefault = true;
+  static const int cooldownCandlesDefault = 2;
+  static const int cooldownCandlesMin = 1;
+  static const int cooldownCandlesMax = 10;
+
+  /// Circuit breaker: ambang "tripped" → sistem menahan sinyal (mode aman).
+  static const int cbMaxRestFailures = 3; // REST gagal beruntun
+  static const int cbMaxWsDownMs = 120000; // WS putus > 2 menit
+  static const int cbCandleDelayFactor = 3; // data terlambat > 3× interval
+
   /// Simbol default yang dipantau (fallback saat mode kustom / sebelum daftar
   /// top-volume berhasil diambil). Catatan: MATIC sudah di-rename menjadi POL di
   /// Binance, sehingga dipakai POLUSDT.

@@ -13,6 +13,7 @@ import '../models/symbol_ticker.dart';
 import '../network/binance_rest_client.dart';
 import '../network/binance_ws_client.dart';
 import '../services/notification_service.dart';
+import '../services/system_health.dart';
 import '../signals/signal_engine.dart';
 
 /// State pusat aplikasi: mengorkestrasi REST + WebSocket (via proxy),
@@ -38,6 +39,10 @@ class AppState extends ChangeNotifier {
 
   final Map<String, SymbolTicker> tickers = {};
   final Map<String, SymbolEvaluation> evaluations = {};
+
+  /// Candle terakhir (openTime) yang sudah dinotifikasi per simbol — mencegah
+  /// notifikasi dobel bila dua jalur memproses candle yang sama.
+  final Map<String, int> _lastNotifiedCandle = {};
 
   /// Notifier harga per-simbol: memungkinkan tiap baris/harga di UI rebuild
   /// SEKETIKA saat ada tick, tanpa merebuild seluruh dashboard (mulus + hemat).
@@ -204,12 +209,22 @@ class AppState extends ChangeNotifier {
       );
       isOnline = true;
       errorMessage = null;
+      SystemHealth.instance.recordRestSuccess();
     } catch (e) {
       isOnline = false;
       errorMessage = 'Gagal memuat data (offline?). Menampilkan cache.';
+      SystemHealth.instance.recordRestFailure();
     }
     notifyListeners();
   }
+
+  /// Apakah sistem sedang menahan emisi sinyal (mode aman circuit breaker).
+  bool get signalsHeld => SystemHealth.instance
+      .signalsHeld(intervalMs: AppConfig.intervalMs(settings.interval));
+
+  /// Alasan mode aman untuk banner/log.
+  String get healthReason => SystemHealth.instance
+      .reason(intervalMs: AppConfig.intervalMs(settings.interval));
 
   /// Apakah cache candle sebuah simbol sudah mutakhir (candle timeframe terakhir
   /// yang tertutup sudah ada) sehingga tidak perlu di-fetch ulang.
@@ -269,6 +284,7 @@ class AppState extends ChangeNotifier {
     _subs.add(ws.tradeStream.listen(_onTrade));
     _subs.add(ws.statusStream.listen((st) {
       wsStatus = st;
+      SystemHealth.instance.setWsConnected(st == WsStatus.connected);
       _scheduleUiUpdate();
     }));
     await ws.connect();
@@ -320,6 +336,7 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   Future<void> _onCandle(WsCandleEvent e) async {
+    SystemHealth.instance.recordData(); // data segar → reset penanda keterlambatan
     // Jaga harga tetap live dari stream kline (penting saat miniTicker dimatikan
     // di mode hemat bandwidth). % perubahan 24 jam dipertahankan apa adanya.
     final existing = tickers[e.symbol];
@@ -370,22 +387,33 @@ class AppState extends ChangeNotifier {
     final closed = candles.closedCandles(symbol);
     if (closed.isEmpty) return;
 
-    // Selesaikan sinyal pending terhadap candle terbaru (update akurasi).
-    await history.resolvePending(symbol, closed);
+    // Selesaikan sinyal pending + pasang cooldown setelah TP/SL.
+    final cooldownMs = settings.cooldownEnabled
+        ? settings.cooldownCandles * AppConfig.intervalMs(settings.interval)
+        : 0;
+    await history.resolvePending(symbol, closed, cooldownMs: cooldownMs);
 
     _evaluateSymbol(symbol, notify: false);
 
     if (emitSignal) {
       final eval = evaluations[symbol];
       if (eval != null && eval.signal.isActionable) {
-        await history.add(eval.signal);
-        if (settings.notificationsEnabled) {
-          await NotificationService.instance.showSignal(
-            eval.signal,
-            sound: settings.soundEnabled,
-            vibrate: settings.vibrationEnabled,
-            soundAsset: settings.soundName,
-          );
+        // Circuit breaker: tahan emisi saat sistem tidak sehat.
+        final held = SystemHealth.instance
+            .signalsHeld(intervalMs: AppConfig.intervalMs(settings.interval));
+        // Anti-dup: satu emisi per candle per simbol.
+        final dup = _lastNotifiedCandle[symbol] == eval.signal.timestamp;
+        if (!held && !dup) {
+          await history.add(eval.signal);
+          _lastNotifiedCandle[symbol] = eval.signal.timestamp;
+          if (settings.notificationsEnabled) {
+            await NotificationService.instance.showSignal(
+              eval.signal,
+              sound: settings.soundEnabled,
+              vibrate: settings.vibrationEnabled,
+              soundAsset: settings.soundName,
+            );
+          }
         }
       }
     }

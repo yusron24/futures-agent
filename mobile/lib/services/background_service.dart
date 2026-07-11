@@ -8,6 +8,7 @@ import '../data/signal_history_repository.dart';
 import '../indicators/vwap.dart';
 import '../network/binance_rest_client.dart';
 import '../services/notification_service.dart';
+import '../services/system_health.dart';
 import '../signals/signal_engine.dart';
 
 /// Entry point isolate background workmanager. HARUS top-level dan diberi
@@ -119,12 +120,19 @@ class BackgroundService {
 
         final closed = candles.closedCandles(symbol);
         if (closed.isEmpty) continue;
+        SystemHealth.instance.recordData();
 
-        // Selesaikan sinyal pending & perbarui akurasi.
-        await history.resolvePending(symbol, closed);
+        // Selesaikan sinyal pending + pasang cooldown setelah TP/SL.
+        final cooldownMs = settings.cooldownEnabled
+            ? settings.cooldownCandles * AppConfig.intervalMs(settings.interval)
+            : 0;
+        await history.resolvePending(symbol, closed, cooldownMs: cooldownMs);
 
+        // Engine sudah menerapkan gerbang mutu data, cooldown, & filter 70%.
         final eval = engine.evaluate(symbol, closed);
-        if (eval.signal.isActionable) {
+        final held = SystemHealth.instance
+            .signalsHeld(intervalMs: AppConfig.intervalMs(settings.interval));
+        if (eval.signal.isActionable && !held) {
           await history.add(eval.signal);
           await NotificationService.instance.showSignal(
             eval.signal,
