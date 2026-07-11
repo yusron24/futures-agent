@@ -177,6 +177,34 @@ class SettingsRepository {
       (_box.get('bg_last_processed_hour') as num?)?.toInt() ?? 0;
   set bgLastProcessedHour(int v) => _box.put('bg_last_processed_hour', v);
 
+  // --- VWAP ---
+  /// Tampilkan garis + band VWAP di chart & pakai sebagai konfluens sinyal.
+  bool get vwapEnabled =>
+      _box.get('vwap_enabled', defaultValue: AppConfig.vwapEnabledDefault)
+          as bool;
+  set vwapEnabled(bool v) => _box.put('vwap_enabled', v);
+
+  /// Metode VWAP: 'rolling' (bergulir) atau 'anchored' (reset harian UTC).
+  String get vwapMode {
+    final v =
+        _box.get('vwap_mode', defaultValue: AppConfig.vwapModeDefault) as String;
+    return (v == 'rolling' || v == 'anchored') ? v : AppConfig.vwapModeDefault;
+  }
+
+  set vwapMode(String v) {
+    if (v == 'rolling' || v == 'anchored') _box.put('vwap_mode', v);
+  }
+
+  /// Periode jendela VWAP rolling.
+  int get vwapPeriod {
+    final v = (_box.get('vwap_period') as num?)?.toInt() ??
+        AppConfig.vwapPeriodDefault;
+    return v.clamp(AppConfig.vwapPeriodMin, AppConfig.vwapPeriodMax);
+  }
+
+  set vwapPeriod(int v) => _box.put('vwap_period',
+      v.clamp(AppConfig.vwapPeriodMin, AppConfig.vwapPeriodMax));
+
   /// Ukuran posisi simulasi berdasarkan risiko: jumlah modal yang dipertaruhkan.
   double riskAmount() => simCapital * (riskPercent / 100.0);
 }

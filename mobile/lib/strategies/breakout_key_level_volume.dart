@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../indicators/indicators.dart';
+import '../indicators/vwap.dart';
 import '../models/candle.dart';
 import '../models/strategy_result.dart';
 import 'strategy.dart';
@@ -98,21 +99,34 @@ class BreakoutKeyLevelVolume extends Strategy {
         return StrategyResult.none(id, name,
             note: 'TP melewati resistance berikutnya');
       }
+      // Konfluens VWAP: breakout searah VWAP = akumulasi institusi (bonus);
+      // melawan VWAP = penalti besar.
+      final vwap = VwapConfig.enabledForSignals
+          ? Vwap.confluenceOf(candles, TradeDirection.buy, entry)
+          : null;
+      var conf = _confidence(volRatio);
+      if (vwap != null) {
+        conf = vwap.adjust(conf, bonus: 8, penalty: 25, overPenalty: 10);
+      }
+      final ind = <String, String>{
+        'Level': level.toStringAsFixed(4),
+        'Volume': '${volRatio.toStringAsFixed(2)}× avg20',
+        'RR': '1:2,5',
+      };
+      if (vwap != null && vwap.available) {
+        ind['VWAP'] = vwap.vwapValue.toStringAsFixed(4);
+      }
       return StrategyResult(
         strategyId: id,
         strategyName: name,
         fired: true,
         direction: TradeDirection.buy,
-        confidence: _confidence(volRatio),
+        confidence: conf,
         entry: entry,
         stopLoss: sl,
         takeProfit: tp,
-        indicators: {
-          'Level': level.toStringAsFixed(4),
-          'Volume': '${volRatio.toStringAsFixed(2)}× avg20',
-          'RR': '1:2,5',
-        },
-        note: 'Breakout resistance kunci + lonjakan volume',
+        indicators: ind,
+        note: 'Breakout resistance kunci + volume + VWAP',
       );
     }
 
@@ -131,21 +145,32 @@ class BreakoutKeyLevelVolume extends Strategy {
         return StrategyResult.none(id, name,
             note: 'TP melewati support berikutnya');
       }
+      final vwap = VwapConfig.enabledForSignals
+          ? Vwap.confluenceOf(candles, TradeDirection.sell, entry)
+          : null;
+      var conf = _confidence(volRatio);
+      if (vwap != null) {
+        conf = vwap.adjust(conf, bonus: 8, penalty: 25, overPenalty: 10);
+      }
+      final ind = <String, String>{
+        'Level': level.toStringAsFixed(4),
+        'Volume': '${volRatio.toStringAsFixed(2)}× avg20',
+        'RR': '1:2,5',
+      };
+      if (vwap != null && vwap.available) {
+        ind['VWAP'] = vwap.vwapValue.toStringAsFixed(4);
+      }
       return StrategyResult(
         strategyId: id,
         strategyName: name,
         fired: true,
         direction: TradeDirection.sell,
-        confidence: _confidence(volRatio),
+        confidence: conf,
         entry: entry,
         stopLoss: sl,
         takeProfit: tp,
-        indicators: {
-          'Level': level.toStringAsFixed(4),
-          'Volume': '${volRatio.toStringAsFixed(2)}× avg20',
-          'RR': '1:2,5',
-        },
-        note: 'Breakdown support kunci + lonjakan volume',
+        indicators: ind,
+        note: 'Breakdown support kunci + volume + VWAP',
       );
     }
 

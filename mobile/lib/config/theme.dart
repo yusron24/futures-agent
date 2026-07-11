@@ -21,6 +21,9 @@ class AppColors {
   static const Color textSecondary = Color(0xFF9AA6BD);
   static const Color warning = Color(0xFFF7A600);
 
+  /// Garis VWAP (emas) + band-nya (lebih pudar).
+  static const Color vwap = Color(0xFFFFD54A);
+
   /// Warna arah sinyal.
   static Color forDirection(String direction) {
     switch (direction.toUpperCase()) {

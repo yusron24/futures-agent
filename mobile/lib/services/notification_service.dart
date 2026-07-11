@@ -48,9 +48,9 @@ class NotificationService {
     priority: Priority.high,
   );
 
-  NotificationDetails get _details => NotificationDetails(
+  NotificationDetails get _details => const NotificationDetails(
         android: _androidDetails,
-        iOS: const DarwinNotificationDetails(),
+        iOS: DarwinNotificationDetails(),
       );
 
   /// Tampilkan notifikasi sinyal + efek suara/getar sesuai preferensi.

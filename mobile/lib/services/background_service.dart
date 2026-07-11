@@ -5,6 +5,7 @@ import '../data/candle_repository.dart';
 import '../data/hive_cache.dart';
 import '../data/settings_repository.dart';
 import '../data/signal_history_repository.dart';
+import '../indicators/vwap.dart';
 import '../network/binance_rest_client.dart';
 import '../services/notification_service.dart';
 import '../signals/signal_engine.dart';
@@ -64,6 +65,11 @@ class BackgroundService {
 
     final settings = SettingsRepository();
     if (!settings.notificationsEnabled) return;
+
+    // Samakan konfigurasi VWAP di isolate background agar sinyal konsisten.
+    VwapConfig.mode = VwapConfig.modeFromString(settings.vwapMode);
+    VwapConfig.period = settings.vwapPeriod;
+    VwapConfig.enabledForSignals = settings.vwapEnabled;
 
     // Candle-guard: keluar cepat bila step candle timeframe ini sudah diproses.
     final stepMs = AppConfig.intervalMs(settings.interval);

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:scalp_signals/indicators/vwap.dart';
 import 'package:scalp_signals/models/candle.dart';
 import 'package:scalp_signals/models/strategy_result.dart';
 import 'package:scalp_signals/strategies/liquidity_swap_sniper_entry.dart';
@@ -30,6 +31,9 @@ void main() {
     });
 
     test('seri panjang acak → tidak crash & output konsisten', () {
+      // Isolasi logika SMC murni (matikan konfluens VWAP untuk assertion skor).
+      VwapConfig.enabledForSignals = false;
+      addTearDown(() => VwapConfig.enabledForSignals = true);
       final s = LiquiditySwapSniperEntry();
       final rnd = math.Random(7);
       double price = 100;

@@ -75,7 +75,11 @@ class _SignalDetailPageState extends State<SignalDetailPage> {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: CandlestickChart(candles: candles, signal: signal),
+              child: CandlestickChart(
+                candles: candles,
+                signal: signal,
+                showVwap: app.settings.vwapEnabled,
+              ),
             ),
           ),
           const SizedBox(height: 16),
