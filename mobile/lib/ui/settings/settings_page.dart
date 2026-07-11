@@ -286,11 +286,11 @@ class _SettingsPageState extends State<SettingsPage> {
                         'Otomatis memantau pair USDT dengan volume 24 jam tertinggi'),
                   ),
                   const Divider(height: 1),
-                  RadioListTile<String>(
+                  const RadioListTile<String>(
                     value: SettingsRepository.modeCustom,
                     activeColor: AppColors.primary,
-                    title: const Text('Daftar kustom'),
-                    subtitle: const Text('Pilih sendiri pair yang dipantau'),
+                    title: Text('Daftar kustom'),
+                    subtitle: Text('Pilih sendiri pair yang dipantau'),
                   ),
                 ],
               ),

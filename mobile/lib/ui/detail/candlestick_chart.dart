@@ -160,7 +160,7 @@ class _CandlePainter extends CustomPainter {
       _drawSeries(canvas, vw.lower2, xAt, yFor, bandColor, 0.8, dashed: true);
       _drawSeries(canvas, vw.lower3, xAt, yFor, bandColor, 0.8, dashed: true);
       _drawSeries(canvas, vw.vwap, xAt, yFor, AppColors.vwap, 1.5);
-      _drawText(canvas, 'VWAP', Offset(leftPad + 3, topPad + 2),
+      _drawText(canvas, 'VWAP', const Offset(leftPad + 3, topPad + 2),
           AppColors.vwap, 9, bold: true);
     }
 
