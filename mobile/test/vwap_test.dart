@@ -16,7 +16,7 @@ Candle _c(int t, double price, double v) => Candle(
 void main() {
   group('VWAP', () {
     test('volume seragam → VWAP rolling = SMA typical price', () {
-      final closes = [10.0, 11, 12, 13, 14, 15, 16, 17];
+      final List<double> closes = [10, 11, 12, 13, 14, 15, 16, 17];
       final c = [for (int i = 0; i < closes.length; i++) _c(i * 3600000, closes[i], 10)];
       final r = Vwap.compute(c, mode: VwapMode.rolling, period: 5);
       // index4 = avg(10..14)=12 ; index7 = avg(13..17)=15
@@ -40,7 +40,7 @@ void main() {
     });
 
     test('volume nol → fallback rata-rata (tanpa NaN/crash)', () {
-      final closes = [10.0, 11, 12, 13, 14];
+      final List<double> closes = [10, 11, 12, 13, 14];
       final c = [for (int i = 0; i < closes.length; i++) _c(i * 3600000, closes[i], 0)];
       final r = Vwap.compute(c, mode: VwapMode.rolling, period: 5);
       expect(r.vwap[4].isNaN, false);
@@ -48,7 +48,7 @@ void main() {
     });
 
     test('urutan band: upper3≥upper2≥upper1≥vwap≥lower1≥lower2≥lower3', () {
-      final vals = [10.0, 12, 9, 14, 8, 15, 11, 13, 10, 16];
+      final List<double> vals = [10, 12, 9, 14, 8, 15, 11, 13, 10, 16];
       final c = [for (int i = 0; i < vals.length; i++) _c(i * 3600000, vals[i], 5 + i.toDouble())];
       final r = Vwap.compute(c, mode: VwapMode.rolling, period: 5);
       final p = r.last!;
