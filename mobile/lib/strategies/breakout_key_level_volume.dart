@@ -18,6 +18,10 @@ class BreakoutKeyLevelVolume extends Strategy {
   @override
   String get id => 'breakout_key_level_volume';
   @override
+  StrategyTier get tier => StrategyTier.secondary;
+  @override
+  String get family => 'breakout';
+  @override
   String get name => 'Breakout Level Kunci + Volume';
   @override
   String get description =>

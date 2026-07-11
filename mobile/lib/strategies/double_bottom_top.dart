@@ -17,6 +17,10 @@ class DoubleBottomTop extends Strategy {
   @override
   String get id => 'double_bottom_top';
   @override
+  StrategyTier get tier => StrategyTier.secondary;
+  @override
+  String get family => 'reversal';
+  @override
   String get name => 'Double Bottom / Top';
   @override
   String get description =>

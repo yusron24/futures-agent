@@ -1,17 +1,20 @@
+import '../config/app_config.dart';
 import '../models/candle.dart';
 import '../models/signal.dart';
+import '../signals/confidence_calibration.dart';
 import 'hive_cache.dart';
 
-/// Statistik akurasi satu strategi.
+/// Statistik akurasi satu strategi (berbobot-waktu; wins/losses bisa pecahan
+/// karena decay).
 class StrategyAccuracy {
-  final int wins;
-  final int losses;
+  final double wins;
+  final double losses;
   const StrategyAccuracy(this.wins, this.losses);
 
-  int get total => wins + losses;
+  double get total => wins + losses;
 
   /// Akurasi dasar 0..1. Default 0,5 saat belum ada data (prior netral).
-  double get rate => total == 0 ? 0.5 : wins / total;
+  double get rate => total <= 0 ? 0.5 : wins / total;
 }
 
 /// Menyimpan riwayat sinyal, mengevaluasi hasil (TP/SL), dan melacak akurasi
@@ -46,34 +49,36 @@ class SignalHistoryRepository {
     await _box.put(s.key, s);
   }
 
-  /// Akurasi dasar strategi (0..1) untuk pembobotan.
-  double baseAccuracy(String strategyId) {
-    final data = _acc.get(strategyId);
-    if (data is Map) {
-      final wins = (data['wins'] as num?)?.toInt() ?? 0;
-      final losses = (data['losses'] as num?)?.toInt() ?? 0;
-      return StrategyAccuracy(wins, losses).rate;
-    }
-    return 0.5;
+  /// Akurasi dasar strategi (0..1) untuk pembobotan (rasio mentah).
+  double baseAccuracy(String strategyId) => accuracyOf(strategyId).rate;
+
+  /// Akurasi TERKALIBRASI (shrinkage sample kecil) — dipakai engine sebagai
+  /// bobot arah agar strategi minim histori tidak overconfident.
+  double calibratedAccuracy(String strategyId) {
+    final a = accuracyOf(strategyId);
+    return ConfidenceCalibration.shrunkAccuracy(a.wins, a.losses);
   }
 
   StrategyAccuracy accuracyOf(String strategyId) {
     final data = _acc.get(strategyId);
     if (data is Map) {
       return StrategyAccuracy(
-        (data['wins'] as num?)?.toInt() ?? 0,
-        (data['losses'] as num?)?.toInt() ?? 0,
+        (data['wins'] as num?)?.toDouble() ?? 0,
+        (data['losses'] as num?)?.toDouble() ?? 0,
       );
     }
     return const StrategyAccuracy(0, 0);
   }
 
+  /// Perbarui akurasi dengan DECAY (bobot hasil lama diperkecil) sehingga
+  /// performa terbaru lebih menentukan.
   Future<void> _recordOutcome(List<String> strategyIds, bool win) async {
+    const decay = AppConfig.calibDecay;
     for (final id in strategyIds) {
       final cur = accuracyOf(id);
       await _acc.put(id, {
-        'wins': cur.wins + (win ? 1 : 0),
-        'losses': cur.losses + (win ? 0 : 1),
+        'wins': cur.wins * decay + (win ? 1 : 0),
+        'losses': cur.losses * decay + (win ? 0 : 1),
       });
     }
   }

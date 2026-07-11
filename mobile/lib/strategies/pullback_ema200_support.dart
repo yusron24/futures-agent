@@ -1,3 +1,4 @@
+import '../config/app_config.dart';
 import '../indicators/indicators.dart';
 import '../indicators/vwap.dart';
 import '../models/candle.dart';
@@ -15,6 +16,10 @@ import 'strategy.dart';
 class PullbackEma200Support extends Strategy {
   @override
   String get id => 'pullback_ema200_support';
+  @override
+  StrategyTier get tier => StrategyTier.core;
+  @override
+  String get family => 'trend';
   @override
   String get name => 'Pullback EMA200 + Konfirmasi';
   @override
@@ -81,17 +86,21 @@ class PullbackEma200Support extends Strategy {
               note: 'TP di bawah swing high terakhir');
         }
       }
-      // Konfluens VWAP: JANGAN BUY bila harga di bawah VWAP (walau di atas EMA200).
+      // Konfluens VWAP BERTINGKAT (soft-veto): veto keras HANYA bila harga jauh
+      // menembus band-2 (invalidasi struktural). Selain itu penalti bertingkat.
       final vwap = VwapConfig.enabledForSignals
           ? Vwap.confluenceOf(candles, TradeDirection.buy, entry)
           : null;
-      if (vwap != null && vwap.available && !vwap.aligned) {
+      if (vwap != null && vwap.available && vwap.hardOppose) {
         return StrategyResult.none(id, name,
-            note: 'Harga di bawah VWAP — filter dibatalkan');
+            note: 'Harga jauh di bawah VWAP (band-2) — invalidasi');
       }
       var conf = _confidence(rsi[last], slope.abs());
       if (vwap != null) {
-        conf = vwap.adjust(conf, bonus: 6, penalty: 20, overPenalty: 8);
+        conf = vwap.gradedAdjust(conf,
+            alignedBonus: AppConfig.vwapAlignedBonus,
+            band1: AppConfig.vwapBand1Penalty,
+            band2: AppConfig.vwapBand2Penalty);
       }
       final ind = <String, String>{
         'EMA200': emaNow.toStringAsFixed(4),
@@ -144,17 +153,21 @@ class PullbackEma200Support extends Strategy {
               note: 'TP di atas swing low terakhir');
         }
       }
-      // Konfluens VWAP: JANGAN SELL bila harga di atas VWAP (walau di bawah EMA200).
+      // Konfluens VWAP BERTINGKAT (soft-veto): veto keras HANYA bila harga jauh
+      // menembus band-2 (invalidasi struktural). Selain itu penalti bertingkat.
       final vwap = VwapConfig.enabledForSignals
           ? Vwap.confluenceOf(candles, TradeDirection.sell, entry)
           : null;
-      if (vwap != null && vwap.available && !vwap.aligned) {
+      if (vwap != null && vwap.available && vwap.hardOppose) {
         return StrategyResult.none(id, name,
-            note: 'Harga di atas VWAP — filter dibatalkan');
+            note: 'Harga jauh di atas VWAP (band-2) — invalidasi');
       }
       var conf = _confidence(100 - rsi[last], slope.abs());
       if (vwap != null) {
-        conf = vwap.adjust(conf, bonus: 6, penalty: 20, overPenalty: 8);
+        conf = vwap.gradedAdjust(conf,
+            alignedBonus: AppConfig.vwapAlignedBonus,
+            band1: AppConfig.vwapBand1Penalty,
+            band2: AppConfig.vwapBand2Penalty);
       }
       final ind = <String, String>{
         'EMA200': emaNow.toStringAsFixed(4),

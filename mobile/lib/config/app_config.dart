@@ -118,6 +118,38 @@ class AppConfig {
   static const int cbMaxWsDownMs = 120000; // WS putus > 2 menit
   static const int cbCandleDelayFactor = 3; // data terlambat > 3× interval
 
+  // ---------------------------------------------------------------------------
+  // KALIBRASI CONFIDENCE (Fase 2) — semua mudah di-tune.
+  // ---------------------------------------------------------------------------
+  /// Bobot tier strategi (core = anchor & bobot utama).
+  static const double tierWeightCore = 1.0;
+  static const double tierWeightSecondary = 0.6;
+  static const double tierWeightExperimental = 0.25;
+
+  /// Shrinkage sample kecil (Bayesian) — makin besar makin konservatif.
+  static const double calibShrinkK = 6;
+
+  /// Decay akurasi historis: bobot hasil lama diperkecil tiap outcome baru.
+  static const double calibDecay = 0.98;
+
+  /// Diskon korelasi antar-strategi sefamily (lembut, bukan agresif).
+  static const double familyDiscount = 0.65;
+
+  /// Kalibrasi akhir: baseline & target bukti. Bukti < target → confidence
+  /// ditarik ke baseline. Target kecil agar setup bagus tetap tembus 70%.
+  static const double confBaseline = 50;
+  static const double evidenceTarget = 0.55;
+
+  /// Penalti confidence.
+  static const double disagreementPenalty = 30; // × bobot arah berlawanan
+  static const double noCoreAnchorPenalty = 6; // arah hanya di-anchor secondary
+
+  /// VWAP soft-veto bertingkat (Pullback EMA200) — mudah di-tune.
+  static const double vwapAlignedBonus = 6; // searah VWAP
+  static const double vwapBand1Penalty = 8; // sisi salah, dalam band-1 (ringan)
+  static const double vwapBand2Penalty = 20; // menembus band-1 (besar)
+  // band-3 (menembus band-2) → hard veto di strategi.
+
   /// Simbol default yang dipantau (fallback saat mode kustom / sebelum daftar
   /// top-volume berhasil diambil). Catatan: MATIC sudah di-rename menjadi POL di
   /// Binance, sehingga dipakai POLUSDT.

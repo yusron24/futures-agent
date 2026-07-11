@@ -15,6 +15,10 @@ class MacdDivergence extends Strategy {
   @override
   String get id => 'macd_divergence';
   @override
+  StrategyTier get tier => StrategyTier.secondary;
+  @override
+  String get family => 'momentum';
+  @override
   String get name => 'Divergensi MACD';
   @override
   String get description =>
