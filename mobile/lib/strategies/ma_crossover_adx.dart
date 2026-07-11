@@ -13,6 +13,10 @@ class MaCrossoverAdx extends Strategy {
   @override
   String get id => 'ma_crossover_adx';
   @override
+  StrategyTier get tier => StrategyTier.core;
+  @override
+  String get family => 'trend';
+  @override
   String get name => 'MA Crossover + ADX';
   @override
   String get description =>

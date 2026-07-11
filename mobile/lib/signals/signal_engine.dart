@@ -6,6 +6,7 @@ import '../models/signal.dart';
 import '../models/strategy_result.dart';
 import '../strategies/strategy.dart';
 import '../strategies/strategy_registry.dart';
+import 'confidence_calibration.dart';
 import 'data_quality.dart';
 
 /// Hasil evaluasi lengkap satu simbol: sinyal teragregasi + rincian tiap
@@ -68,34 +69,82 @@ class SignalEngine {
       );
     }
 
-    // Bobot tiap sinyal = akurasi historis strategi × keyakinan individual.
-    double buyWeight = 0, sellWeight = 0;
-    final buyResults = <StrategyResult>[];
-    final sellResults = <StrategyResult>[];
-    for (final r in fired) {
-      final w = _history.baseAccuracy(r.strategyId) * (r.confidence / 100.0);
-      if (r.direction == TradeDirection.buy) {
-        buyWeight += w;
-        buyResults.add(r);
-      } else if (r.direction == TradeDirection.sell) {
-        sellWeight += w;
-        sellResults.add(r);
+    // Metadata tier/family per strategi.
+    final stratById = {for (final s in StrategyRegistry.all) s.id: s};
+    StrategyTier tierOf(String id) =>
+        stratById[id]?.tier ?? StrategyTier.secondary;
+    String familyOf(String id) => stratById[id]?.family ?? id;
+    // Bobot berbobot-akurasi (untuk memilih arah & merata-rata confidence).
+    double rawW(StrategyResult r) =>
+        ConfidenceCalibration.tierWeight(tierOf(r.strategyId)) *
+        _history.calibratedAccuracy(r.strategyId) *
+        (r.confidence / 100.0);
+    // Bobot STRUKTURAL (tier×conf) untuk evidence kalibrasi — TANPA akurasi.
+    double structW(StrategyResult r) =>
+        ConfidenceCalibration.tierWeight(tierOf(r.strategyId)) *
+        (r.confidence / 100.0);
+    double sumRawW(Iterable<StrategyResult> rs) =>
+        rs.fold(0.0, (a, r) => a + rawW(r));
+    Iterable<StrategyResult> dirOf(Iterable<StrategyResult> rs, String d) =>
+        rs.where((r) => r.direction == d);
+
+    final core =
+        fired.where((r) => tierOf(r.strategyId) == StrategyTier.core).toList();
+    final secondary = fired
+        .where((r) => tierOf(r.strategyId) == StrategyTier.secondary)
+        .toList();
+
+    // ANCHOR ARAH: CORE menentukan arah. Bila tak ada core → secondary jadi
+    // anchor cadangan (dengan penalti). Experimental TIDAK pernah jadi anchor.
+    final String anchorDir;
+    final bool coreAnchored;
+    final coreBuyW = sumRawW(dirOf(core, TradeDirection.buy));
+    final coreSellW = sumRawW(dirOf(core, TradeDirection.sell));
+    if (coreBuyW > 0 || coreSellW > 0) {
+      coreAnchored = true;
+      final strong = coreBuyW >= coreSellW ? coreBuyW : coreSellW;
+      final weak = coreBuyW >= coreSellW ? coreSellW : coreBuyW;
+      if (weak > 0 && weak >= strong * 0.5) {
+        return SymbolEvaluation(
+          _neutral(symbol, ts, 'Core bertentangan (BUY vs SELL)'),
+          results,
+        );
       }
+      anchorDir =
+          coreBuyW >= coreSellW ? TradeDirection.buy : TradeDirection.sell;
+    } else {
+      final secBuyW = sumRawW(dirOf(secondary, TradeDirection.buy));
+      final secSellW = sumRawW(dirOf(secondary, TradeDirection.sell));
+      if (secBuyW <= 0 && secSellW <= 0) {
+        // Hanya strategi experimental yang menyala → observasi, bukan sinyal.
+        return SymbolEvaluation(
+          _neutral(symbol, ts,
+              'Hanya strategi observasi — menunggu konfirmasi core/secondary'),
+          results,
+        );
+      }
+      coreAnchored = false;
+      final strong = secBuyW >= secSellW ? secBuyW : secSellW;
+      final weak = secBuyW >= secSellW ? secSellW : secBuyW;
+      if (weak > 0 && weak >= strong * 0.5) {
+        return SymbolEvaluation(
+          _neutral(symbol, ts, 'Strategi bertentangan (BUY vs SELL)'),
+          results,
+        );
+      }
+      anchorDir =
+          secBuyW >= secSellW ? TradeDirection.buy : TradeDirection.sell;
     }
 
-    // Konflik: kedua arah punya bobot berarti -> NEUTRAL dengan catatan.
-    final strong = buyWeight >= sellWeight ? buyWeight : sellWeight;
-    final weak = buyWeight >= sellWeight ? sellWeight : buyWeight;
-    if (weak > 0 && weak >= strong * 0.5) {
-      return SymbolEvaluation(
-        _neutral(symbol, ts,
-            'Strategi bertentangan (BUY vs SELL) — menunggu kejelasan'),
-        results,
-      );
-    }
-
-    final isBuy = buyWeight > sellWeight;
-    final dirResults = isBuy ? buyResults : sellResults;
+    final isBuy = anchorDir == TradeDirection.buy;
+    // Semua hasil searah anchor (core+secondary+experimental) memperkuat.
+    final dirResults = fired.where((r) => r.direction == anchorDir).toList();
+    final oppResults = fired
+        .where((r) =>
+            r.direction != anchorDir &&
+            (r.direction == TradeDirection.buy ||
+                r.direction == TradeDirection.sell))
+        .toList();
     final entry = closedCandles.last.close;
 
     // SL terketat (terdekat ke entry): untuk BUY = stop tertinggi; untuk SELL =
@@ -123,19 +172,33 @@ class SignalEngine {
         ? entry + fixedRiskReward * risk
         : entry - fixedRiskReward * risk;
 
-    // Keyakinan = rata-rata tertimbang (akurasi historis × keyakinan individual)
-    // dari strategi searah. Bonus kecil bila ≥2 strategi sepakat.
-    double weightSum = 0, confWeighted = 0;
-    for (final r in dirResults) {
-      final acc = _history.baseAccuracy(r.strategyId);
-      weightSum += acc;
-      confWeighted += acc * r.confidence;
+    // CONFIDENCE — dua sumbu terpisah agar sample kecil tak menekan dua kali:
+    // (1) confRaw = rata-rata confidence tertimbang bobot efektif (family-diskon,
+    //     berbobot-akurasi).
+    final effW = ConfidenceCalibration.familyEffectiveWeights(
+      dirResults.map((r) => (familyOf(r.strategyId), rawW(r))).toList(),
+    );
+    double wSum = 0, cw = 0;
+    for (int i = 0; i < dirResults.length; i++) {
+      wSum += effW[i];
+      cw += effW[i] * dirResults[i].confidence;
     }
-    double confidence = weightSum == 0
-        ? dirResults.first.confidence
-        : confWeighted / weightSum;
-    if (dirResults.length >= 2) confidence = (confidence + 5);
-    // Penalti mutu data tingkat "warn" (gap kecil / volume anomali / flat).
+    final confRaw = wSum > 0 ? cw / wSum : dirResults.first.confidence;
+    // (2) evidence = kesepakatan STRUKTURAL (tier×conf, family-diskon) TANPA
+    //     akurasi/sample → setup baru-tapi-kuat tetap ber-evidence penuh.
+    final evidence = ConfidenceCalibration.familyEffectiveTotal(
+      dirResults.map((r) => (familyOf(r.strategyId), structW(r))).toList(),
+    );
+    double confidence = ConfidenceCalibration.calibrate(confRaw, evidence);
+
+    // Penalti ketidaksepakatan: arah berlawanan MELEMAHKAN (tak membalik).
+    final oppW = oppResults.fold<double>(0, (a, r) => a + structW(r));
+    if (oppW > 0) {
+      confidence -= (oppW * AppConfig.disagreementPenalty).clamp(0, 20);
+    }
+    // Penalti bila arah hanya di-anchor secondary (tanpa core).
+    if (!coreAnchored) confidence -= AppConfig.noCoreAnchorPenalty;
+    // Penalti mutu data tingkat "warn".
     if (dq.severity == DqSeverity.warn) confidence -= 5;
     confidence = confidence.clamp(0, 100);
 

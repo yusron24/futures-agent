@@ -114,12 +114,21 @@ class VwapConfluence {
   /// Nilai VWAP terbaru (NaN bila tidak tersedia).
   final double vwapValue;
 
+  /// Tingkat perlawanan harga terhadap VWAP (untuk soft-veto bertingkat):
+  /// 0 = searah/aligned; 1 = sisi salah tapi dalam band-1; 2 = menembus band-1;
+  /// 3 = menembus band-2 (invalidasi struktural).
+  final int oppositionBand;
+
   const VwapConfluence({
     required this.available,
     required this.aligned,
     required this.overExtended,
     required this.vwapValue,
+    this.oppositionBand = 0,
   });
+
+  /// Invalidasi struktural jelas: harga menembus band-2 di sisi salah.
+  bool get hardOppose => oppositionBand >= 3;
 
   /// Sesuaikan [confidence] (0..100): bonus bila searah VWAP, penalti bila
   /// melawan, penalti tambahan bila overextended.
@@ -131,6 +140,31 @@ class VwapConfluence {
   }) {
     if (!available) return confidence.clamp(0, 100);
     var c = confidence + (aligned ? bonus : -penalty);
+    if (overExtended) c -= overPenalty;
+    return c.clamp(0, 100);
+  }
+
+  /// Penyesuaian BERTINGKAT (soft-veto): aligned → bonus kecil; band-1 → penalti
+  /// ringan; band-2 → penalti besar; band-3 sebaiknya sudah di-veto pemanggil.
+  double gradedAdjust(
+    double confidence, {
+    double alignedBonus = 6,
+    double band1 = 8,
+    double band2 = 20,
+    double overPenalty = 8,
+  }) {
+    if (!available) return confidence.clamp(0, 100);
+    var c = confidence;
+    switch (oppositionBand) {
+      case 0:
+        c += alignedBonus;
+        break;
+      case 1:
+        c -= band1;
+        break;
+      default: // 2 atau 3
+        c -= band2;
+    }
     if (overExtended) c -= overPenalty;
     return c.clamp(0, 100);
   }
@@ -157,16 +191,28 @@ class Vwap {
         vwapValue: double.nan,
       );
     }
-    final aligned = direction == TradeDirection.buy
+    final buy = direction == TradeDirection.buy;
+    final sell = direction == TradeDirection.sell;
+    final aligned = buy
         ? price >= p.vwap
-        : direction == TradeDirection.sell
+        : sell
             ? price <= p.vwap
             : true;
+    // Tingkat perlawanan: seberapa jauh harga di sisi SALAH VWAP.
+    int band = 0;
+    if (!aligned) {
+      if (buy) {
+        band = price < p.lower2 ? 3 : (price < p.lower1 ? 2 : 1);
+      } else if (sell) {
+        band = price > p.upper2 ? 3 : (price > p.upper1 ? 2 : 1);
+      }
+    }
     return VwapConfluence(
       available: true,
       aligned: aligned,
       overExtended: price > p.upper3 || price < p.lower3,
       vwapValue: p.vwap,
+      oppositionBand: band,
     );
   }
 

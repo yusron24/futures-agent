@@ -27,6 +27,10 @@ class LiquiditySwapSniperEntry extends Strategy {
   @override
   String get id => 'liquidity_swap_sniper';
   @override
+  StrategyTier get tier => StrategyTier.experimental;
+  @override
+  String get family => 'liquidity';
+  @override
   String get name => 'Liquidity Swap Sniper Entry';
   @override
   String get description =>
