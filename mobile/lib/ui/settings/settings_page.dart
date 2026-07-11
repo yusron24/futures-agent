@@ -268,6 +268,64 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 20),
+          _sectionTitle('Keamanan Sinyal'),
+          Card(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  value: s.dataQualityStrict,
+                  onChanged: (v) {
+                    setState(() => s.dataQualityStrict = v);
+                    app.reevaluateAll();
+                  },
+                  activeThumbColor: AppColors.primary,
+                  title: const Text('Gerbang mutu data ketat'),
+                  subtitle: const Text(
+                      'Batalkan sinyal saat candle bolong/duplikat/stale atau '
+                      'data tidak lengkap.'),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  value: s.cooldownEnabled,
+                  onChanged: (v) => setState(() => s.cooldownEnabled = v),
+                  activeThumbColor: AppColors.primary,
+                  title: const Text('Cooldown setelah TP/SL'),
+                  subtitle: const Text(
+                      'Tahan sinyal baru untuk simbol yang baru saja kena TP/SL '
+                      '(mengurangi entry beruntun & notifikasi spam).'),
+                ),
+                if (s.cooldownEnabled) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                    child: Row(
+                      children: [
+                        const Expanded(child: Text('Lama cooldown (candle)')),
+                        Text('${s.cooldownCandles}',
+                            style: const TextStyle(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
+                  Slider(
+                    value: s.cooldownCandles
+                        .clamp(AppConfig.cooldownCandlesMin,
+                            AppConfig.cooldownCandlesMax)
+                        .toDouble(),
+                    min: AppConfig.cooldownCandlesMin.toDouble(),
+                    max: AppConfig.cooldownCandlesMax.toDouble(),
+                    divisions: AppConfig.cooldownCandlesMax -
+                        AppConfig.cooldownCandlesMin,
+                    label: '${s.cooldownCandles}',
+                    activeColor: AppColors.primary,
+                    onChanged: (v) =>
+                        setState(() => s.cooldownCandles = v.round()),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
           _sectionTitle('Simbol Dipantau'),
           Card(
             child: RadioGroup<String>(

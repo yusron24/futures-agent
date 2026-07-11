@@ -205,6 +205,29 @@ class SettingsRepository {
   set vwapPeriod(int v) => _box.put('vwap_period',
       v.clamp(AppConfig.vwapPeriodMin, AppConfig.vwapPeriodMax));
 
+  // --- Keamanan sinyal (gerbang mutu data + cooldown) ---
+  /// Bila aktif, sinyal dibatalkan saat mutu data buruk (candle bolong/stale/dsb).
+  bool get dataQualityStrict =>
+      _box.get('dq_strict', defaultValue: AppConfig.dataQualityStrictDefault)
+          as bool;
+  set dataQualityStrict(bool v) => _box.put('dq_strict', v);
+
+  /// Cooldown setelah TP/SL: tahan sinyal baru untuk simbol selama N candle.
+  bool get cooldownEnabled =>
+      _box.get('cooldown_enabled',
+          defaultValue: AppConfig.cooldownEnabledDefault) as bool;
+  set cooldownEnabled(bool v) => _box.put('cooldown_enabled', v);
+
+  int get cooldownCandles {
+    final v = (_box.get('cooldown_candles') as num?)?.toInt() ??
+        AppConfig.cooldownCandlesDefault;
+    return v.clamp(
+        AppConfig.cooldownCandlesMin, AppConfig.cooldownCandlesMax);
+  }
+
+  set cooldownCandles(int v) => _box.put('cooldown_candles',
+      v.clamp(AppConfig.cooldownCandlesMin, AppConfig.cooldownCandlesMax));
+
   /// Ukuran posisi simulasi berdasarkan risiko: jumlah modal yang dipertaruhkan.
   double riskAmount() => simCapital * (riskPercent / 100.0);
 }

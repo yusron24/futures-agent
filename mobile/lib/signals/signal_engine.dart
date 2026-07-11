@@ -6,6 +6,7 @@ import '../models/signal.dart';
 import '../models/strategy_result.dart';
 import '../strategies/strategy.dart';
 import '../strategies/strategy_registry.dart';
+import 'data_quality.dart';
 
 /// Hasil evaluasi lengkap satu simbol: sinyal teragregasi + rincian tiap
 /// strategi (untuk halaman detail).
@@ -28,6 +29,24 @@ class SignalEngine {
 
   /// Evaluasi satu simbol pada candle yang sudah ditutup.
   SymbolEvaluation evaluate(String symbol, List<Candle> closedCandles) {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final intervalMs = AppConfig.intervalMs(_settings.interval);
+    final ts = closedCandles.isEmpty ? 0 : closedCandles.last.openTime;
+
+    // GERBANG MUTU DATA — hentikan lebih awal bila input buruk (candle bolong/
+    // duplikat/stale) agar strategi tidak menghasilkan sinyal palsu.
+    final dq = DataQualityGate.assess(
+      closedCandles,
+      intervalMs: intervalMs,
+      nowMs: nowMs,
+    );
+    if (dq.severity == DqSeverity.block && _settings.dataQualityStrict) {
+      return SymbolEvaluation(
+        _neutral(symbol, ts, 'Mutu data buruk: ${dq.summary}'),
+        const [],
+      );
+    }
+
     final enabled = _settings.enabledStrategies.toSet();
     final results = <StrategyResult>[];
 
@@ -41,7 +60,6 @@ class SignalEngine {
     }
 
     final fired = results.where((r) => r.fired).toList();
-    final ts = closedCandles.isEmpty ? 0 : closedCandles.last.openTime;
 
     if (fired.isEmpty) {
       return SymbolEvaluation(
@@ -117,7 +135,18 @@ class SignalEngine {
         ? dirResults.first.confidence
         : confWeighted / weightSum;
     if (dirResults.length >= 2) confidence = (confidence + 5);
+    // Penalti mutu data tingkat "warn" (gap kecil / volume anomali / flat).
+    if (dq.severity == DqSeverity.warn) confidence -= 5;
     confidence = confidence.clamp(0, 100);
+
+    // COOLDOWN: setelah TP/SL simbol ini, tahan sinyal baru beberapa candle
+    // (mencegah entry beruntun & notifikasi spam).
+    if (_settings.cooldownEnabled && _history.inCooldown(symbol, nowMs)) {
+      return SymbolEvaluation(
+        _neutral(symbol, ts, 'Cooldown aktif — menahan sinyal baru'),
+        results,
+      );
+    }
 
     // Filter WAJIB: sinyal hanya aktif bila keyakinan ≥ ambang (mis. 70%).
     // Di bawah itu dikembalikan NEUTRAL sehingga tidak tampil / notifikasi /

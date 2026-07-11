@@ -19,6 +19,16 @@ class StrategyAccuracy {
 class SignalHistoryRepository {
   final _box = HiveCache.signals();
   final _acc = HiveCache.accuracy();
+  final _cool = HiveCache.settings();
+
+  // --- Cooldown per simbol (epoch ms sampai kapan sinyal ditahan) ---
+  int cooldownUntil(String symbol) =>
+      (_cool.get('cooldown_$symbol') as num?)?.toInt() ?? 0;
+
+  bool inCooldown(String symbol, int nowMs) => nowMs < cooldownUntil(symbol);
+
+  Future<void> setCooldown(String symbol, int untilMs) async =>
+      _cool.put('cooldown_$symbol', untilMs);
 
   /// Semua sinyal, terbaru dulu.
   List<Signal> all() {
@@ -73,8 +83,9 @@ class SignalHistoryRepository {
   /// menyentuh level. Mengembalikan daftar sinyal yang baru terselesaikan.
   Future<List<Signal>> resolvePending(
     String symbol,
-    List<Candle> closedCandles,
-  ) async {
+    List<Candle> closedCandles, {
+    int cooldownMs = 0,
+  }) async {
     final resolved = <Signal>[];
     for (final s in pending()) {
       if (s.symbol != symbol || !s.isActionable) continue;
@@ -113,6 +124,12 @@ class SignalHistoryRepository {
             s.triggeredStrategies,
             outcome == SignalOutcome.tpHit,
           );
+          // Pasang cooldown: lebih panjang setelah SL daripada TP.
+          if (cooldownMs > 0) {
+            final mult = outcome == SignalOutcome.slHit ? 1.0 : 0.5;
+            await setCooldown(
+                symbol, c.closeTime + (cooldownMs * mult).round());
+          }
           resolved.add(updated);
           break;
         }
