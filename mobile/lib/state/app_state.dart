@@ -6,6 +6,7 @@ import '../config/app_config.dart';
 import '../data/candle_repository.dart';
 import '../data/settings_repository.dart';
 import '../data/signal_history_repository.dart';
+import '../indicators/vwap.dart';
 import '../models/signal.dart';
 import '../models/strategy_result.dart';
 import '../models/symbol_ticker.dart';
@@ -74,6 +75,8 @@ class AppState extends ChangeNotifier {
   int get monitoredCount => symbols.length;
 
   Future<void> init() async {
+    // Terapkan konfigurasi VWAP sebelum evaluasi pertama agar konsisten.
+    applyVwapSettings();
     isLoading = true;
     notifyListeners();
 
@@ -501,6 +504,19 @@ class AppState extends ChangeNotifier {
       eval?.results ?? const [],
     );
     notifyListeners();
+  }
+
+  /// Salin setelan VWAP pengguna ke [VwapConfig] statis (dibaca chart & strategi).
+  void applyVwapSettings() {
+    VwapConfig.mode = VwapConfig.modeFromString(settings.vwapMode);
+    VwapConfig.period = settings.vwapPeriod;
+    VwapConfig.enabledForSignals = settings.vwapEnabled;
+  }
+
+  /// Dipanggil dari Pengaturan saat setelan VWAP berubah: terapkan + evaluasi ulang.
+  void refreshVwap() {
+    applyVwapSettings();
+    reevaluateAll();
   }
 
   /// Paksa evaluasi ulang semua simbol (mis. setelah ubah pengaturan risiko).

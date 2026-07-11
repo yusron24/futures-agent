@@ -1,4 +1,5 @@
 import '../indicators/indicators.dart';
+import '../indicators/vwap.dart';
 import '../models/candle.dart';
 import '../models/strategy_result.dart';
 import 'strategy.dart';
@@ -80,23 +81,39 @@ class PullbackEma200Support extends Strategy {
               note: 'TP di bawah swing high terakhir');
         }
       }
+      // Konfluens VWAP: JANGAN BUY bila harga di bawah VWAP (walau di atas EMA200).
+      final vwap = VwapConfig.enabledForSignals
+          ? Vwap.confluenceOf(candles, TradeDirection.buy, entry)
+          : null;
+      if (vwap != null && vwap.available && !vwap.aligned) {
+        return StrategyResult.none(id, name,
+            note: 'Harga di bawah VWAP — filter dibatalkan');
+      }
+      var conf = _confidence(rsi[last], slope.abs());
+      if (vwap != null) {
+        conf = vwap.adjust(conf, bonus: 6, penalty: 20, overPenalty: 8);
+      }
+      final ind = <String, String>{
+        'EMA200': emaNow.toStringAsFixed(4),
+        'Jarak ke EMA': '${(dist * 100).toStringAsFixed(2)}%',
+        'RSI(14)': rsi[last].toStringAsFixed(1),
+        'ATR(14)': atr[last].toStringAsFixed(4),
+        'RR': '1:2,5',
+      };
+      if (vwap != null && vwap.available) {
+        ind['VWAP'] = vwap.vwapValue.toStringAsFixed(4);
+      }
       return StrategyResult(
         strategyId: id,
         strategyName: name,
         fired: true,
         direction: TradeDirection.buy,
-        confidence: _confidence(rsi[last], slope.abs()),
+        confidence: conf,
         entry: entry,
         stopLoss: sl,
         takeProfit: tp,
-        indicators: {
-          'EMA200': emaNow.toStringAsFixed(4),
-          'Jarak ke EMA': '${(dist * 100).toStringAsFixed(2)}%',
-          'RSI(14)': rsi[last].toStringAsFixed(1),
-          'ATR(14)': atr[last].toStringAsFixed(4),
-          'RR': '1:2,5',
-        },
-        note: 'Pullback bullish ke EMA200 + konfirmasi',
+        indicators: ind,
+        note: 'Pullback bullish ke EMA200 + konfirmasi + VWAP',
       );
     }
 
@@ -127,23 +144,39 @@ class PullbackEma200Support extends Strategy {
               note: 'TP di atas swing low terakhir');
         }
       }
+      // Konfluens VWAP: JANGAN SELL bila harga di atas VWAP (walau di bawah EMA200).
+      final vwap = VwapConfig.enabledForSignals
+          ? Vwap.confluenceOf(candles, TradeDirection.sell, entry)
+          : null;
+      if (vwap != null && vwap.available && !vwap.aligned) {
+        return StrategyResult.none(id, name,
+            note: 'Harga di atas VWAP — filter dibatalkan');
+      }
+      var conf = _confidence(100 - rsi[last], slope.abs());
+      if (vwap != null) {
+        conf = vwap.adjust(conf, bonus: 6, penalty: 20, overPenalty: 8);
+      }
+      final ind = <String, String>{
+        'EMA200': emaNow.toStringAsFixed(4),
+        'Jarak ke EMA': '${(dist * 100).toStringAsFixed(2)}%',
+        'RSI(14)': rsi[last].toStringAsFixed(1),
+        'ATR(14)': atr[last].toStringAsFixed(4),
+        'RR': '1:2,5',
+      };
+      if (vwap != null && vwap.available) {
+        ind['VWAP'] = vwap.vwapValue.toStringAsFixed(4);
+      }
       return StrategyResult(
         strategyId: id,
         strategyName: name,
         fired: true,
         direction: TradeDirection.sell,
-        confidence: _confidence(100 - rsi[last], slope.abs()),
+        confidence: conf,
         entry: entry,
         stopLoss: sl,
         takeProfit: tp,
-        indicators: {
-          'EMA200': emaNow.toStringAsFixed(4),
-          'Jarak ke EMA': '${(dist * 100).toStringAsFixed(2)}%',
-          'RSI(14)': rsi[last].toStringAsFixed(1),
-          'ATR(14)': atr[last].toStringAsFixed(4),
-          'RR': '1:2,5',
-        },
-        note: 'Pullback bearish ke EMA200 + konfirmasi',
+        indicators: ind,
+        note: 'Pullback bearish ke EMA200 + konfirmasi + VWAP',
       );
     }
 

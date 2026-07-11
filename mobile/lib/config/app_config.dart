@@ -92,6 +92,18 @@ class AppConfig {
   /// (tidak tampil, tidak notifikasi, tidak masuk riwayat).
   static const double minSignalConfidence = 70;
 
+  // ---------------------------------------------------------------------------
+  // VWAP (garis + 3 band). Dipakai chart & konfluens strategi.
+  // ---------------------------------------------------------------------------
+  static const bool vwapEnabledDefault = true;
+  static const String vwapModeDefault = 'rolling'; // 'rolling' | 'anchored'
+  static const int vwapPeriodDefault = 20;
+  static const int vwapPeriodMin = 5;
+  static const int vwapPeriodMax = 100;
+  static const double vwapMult1 = 1.0;
+  static const double vwapMult2 = 2.0;
+  static const double vwapMult3 = 3.0;
+
   /// Simbol default yang dipantau (fallback saat mode kustom / sebelum daftar
   /// top-volume berhasil diambil). Catatan: MATIC sudah di-rename menjadi POL di
   /// Binance, sehingga dipakai POLUSDT.

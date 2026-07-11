@@ -59,6 +59,84 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 20),
+          _sectionTitle('VWAP (Volume Weighted Average Price)'),
+          Card(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  value: s.vwapEnabled,
+                  onChanged: (v) {
+                    setState(() => s.vwapEnabled = v);
+                    app.refreshVwap();
+                  },
+                  activeThumbColor: AppColors.primary,
+                  title: const Text('Tampilkan & pakai VWAP'),
+                  subtitle: const Text(
+                      'Garis VWAP + 3 band di chart, dan sebagai konfluens '
+                      'konfirmasi sinyal (bukan satu-satunya sumber).'),
+                ),
+                if (s.vwapEnabled) ...[
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Metode',
+                            style: TextStyle(
+                                color: AppColors.textSecondary, fontSize: 12)),
+                        const SizedBox(height: 8),
+                        SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(
+                                value: 'rolling', label: Text('Rolling')),
+                            ButtonSegment(
+                                value: 'anchored', label: Text('Harian (UTC)')),
+                          ],
+                          selected: {s.vwapMode},
+                          onSelectionChanged: (sel) {
+                            if (sel.isNotEmpty) {
+                              setState(() => s.vwapMode = sel.first);
+                              app.refreshVwap();
+                            }
+                          },
+                        ),
+                        if (s.vwapMode == 'rolling') ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              const Text('Periode'),
+                              const Spacer(),
+                              Text('${s.vwapPeriod}',
+                                  style: const TextStyle(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w700)),
+                            ],
+                          ),
+                          Slider(
+                            value: s.vwapPeriod
+                                .clamp(AppConfig.vwapPeriodMin,
+                                    AppConfig.vwapPeriodMax)
+                                .toDouble(),
+                            min: AppConfig.vwapPeriodMin.toDouble(),
+                            max: AppConfig.vwapPeriodMax.toDouble(),
+                            divisions: AppConfig.vwapPeriodMax -
+                                AppConfig.vwapPeriodMin,
+                            label: '${s.vwapPeriod}',
+                            activeColor: AppColors.primary,
+                            onChanged: (v) =>
+                                setState(() => s.vwapPeriod = v.round()),
+                            onChangeEnd: (_) => app.refreshVwap(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
           _sectionTitle('Strategi Swing'),
           Card(
             child: Column(

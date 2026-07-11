@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../indicators/indicators.dart';
+import '../indicators/vwap.dart';
 import '../models/candle.dart';
 import '../models/strategy_result.dart';
 import 'strategy.dart';
@@ -62,22 +63,33 @@ class DoubleBottomTop extends Strategy {
           final risk = entry - sl;
           if (risk > 0) {
             final tp = entry + rr * risk;
+            final vwap = VwapConfig.enabledForSignals
+                ? Vwap.confluenceOf(candles, TradeDirection.buy, entry)
+                : null;
+            var conf = _confidence((v2 - v1).abs() / v1);
+            if (vwap != null) {
+              conf = vwap.adjust(conf, bonus: 8, penalty: 15, overPenalty: 8);
+            }
+            final ind = <String, String>{
+              'Neckline': neck.toStringAsFixed(4),
+              'Valley': '${v1.toStringAsFixed(4)} / ${v2.toStringAsFixed(4)}',
+              'ATR(14)': atr[last].toStringAsFixed(4),
+              'RR': '1:2,5',
+            };
+            if (vwap != null && vwap.available) {
+              ind['VWAP'] = vwap.vwapValue.toStringAsFixed(4);
+            }
             return StrategyResult(
               strategyId: id,
               strategyName: name,
               fired: true,
               direction: TradeDirection.buy,
-              confidence: _confidence((v2 - v1).abs() / v1),
+              confidence: conf,
               entry: entry,
               stopLoss: sl,
               takeProfit: tp,
-              indicators: {
-                'Neckline': neck.toStringAsFixed(4),
-                'Valley': '${v1.toStringAsFixed(4)} / ${v2.toStringAsFixed(4)}',
-                'ATR(14)': atr[last].toStringAsFixed(4),
-                'RR': '1:2,5',
-              },
-              note: 'Double bottom + breakout neckline',
+              indicators: ind,
+              note: 'Double bottom + breakout neckline + VWAP',
             );
           }
         }
@@ -105,22 +117,33 @@ class DoubleBottomTop extends Strategy {
           final risk = sl - entry;
           if (risk > 0) {
             final tp = entry - rr * risk;
+            final vwap = VwapConfig.enabledForSignals
+                ? Vwap.confluenceOf(candles, TradeDirection.sell, entry)
+                : null;
+            var conf = _confidence((p2 - p1).abs() / p1);
+            if (vwap != null) {
+              conf = vwap.adjust(conf, bonus: 8, penalty: 15, overPenalty: 8);
+            }
+            final ind = <String, String>{
+              'Neckline': neck.toStringAsFixed(4),
+              'Peak': '${p1.toStringAsFixed(4)} / ${p2.toStringAsFixed(4)}',
+              'ATR(14)': atr[last].toStringAsFixed(4),
+              'RR': '1:2,5',
+            };
+            if (vwap != null && vwap.available) {
+              ind['VWAP'] = vwap.vwapValue.toStringAsFixed(4);
+            }
             return StrategyResult(
               strategyId: id,
               strategyName: name,
               fired: true,
               direction: TradeDirection.sell,
-              confidence: _confidence((p2 - p1).abs() / p1),
+              confidence: conf,
               entry: entry,
               stopLoss: sl,
               takeProfit: tp,
-              indicators: {
-                'Neckline': neck.toStringAsFixed(4),
-                'Peak': '${p1.toStringAsFixed(4)} / ${p2.toStringAsFixed(4)}',
-                'ATR(14)': atr[last].toStringAsFixed(4),
-                'RR': '1:2,5',
-              },
-              note: 'Double top + breakdown neckline',
+              indicators: ind,
+              note: 'Double top + breakdown neckline + VWAP',
             );
           }
         }

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../indicators/indicators.dart';
+import '../indicators/vwap.dart';
 import '../models/candle.dart';
 import '../models/strategy_result.dart';
 import 'strategy.dart';
@@ -217,25 +218,37 @@ class LiquiditySwapSniperEntry extends Strategy {
       return StrategyResult.none(id, name, note: 'Skor SMC < ambang');
     }
 
+    // Konfluens VWAP: sebagai magnet/target & filter over-extension.
+    final vwap = VwapConfig.enabledForSignals
+        ? Vwap.confluenceOf(c, TradeDirection.buy, entry)
+        : null;
+    var conf = score;
+    if (vwap != null) {
+      conf = vwap.adjust(conf, bonus: 6, penalty: 10, overPenalty: 8);
+    }
+    final ind = <String, String>{
+      'Tren': 'BULLISH (EMA50>EMA200)',
+      'Order Block': '${ob.low.toStringAsFixed(4)}–${ob.high.toStringAsFixed(4)}',
+      'Liquidity Sweep': sweepLow.toStringAsFixed(4),
+      'CHoCH > ': lhLevel.toStringAsFixed(4),
+      'Imbalance(FVG)': gap.toStringAsFixed(4),
+      'Entry (limit)': entry.toStringAsFixed(4),
+      'Skor SMC': score.toStringAsFixed(0),
+      'RR': '1:2,5',
+    };
+    if (vwap != null && vwap.available) {
+      ind['VWAP (target)'] = vwap.vwapValue.toStringAsFixed(4);
+    }
     return StrategyResult(
       strategyId: id,
       strategyName: name,
       fired: true,
       direction: TradeDirection.buy,
-      confidence: score,
+      confidence: conf,
       entry: entry,
       stopLoss: sl,
       takeProfit: tp,
-      indicators: {
-        'Tren': 'BULLISH (EMA50>EMA200)',
-        'Order Block': '${ob.low.toStringAsFixed(4)}–${ob.high.toStringAsFixed(4)}',
-        'Liquidity Sweep': sweepLow.toStringAsFixed(4),
-        'CHoCH > ': lhLevel.toStringAsFixed(4),
-        'Imbalance(FVG)': gap.toStringAsFixed(4),
-        'Entry (limit)': entry.toStringAsFixed(4),
-        'Skor SMC': score.toStringAsFixed(0),
-        'RR': '1:2,5',
-      },
+      indicators: ind,
       note: 'Sweep low → CHoCH bullish → imbalance → buy limit di OB',
     );
   }
@@ -377,25 +390,36 @@ class LiquiditySwapSniperEntry extends Strategy {
       return StrategyResult.none(id, name, note: 'Skor SMC < ambang');
     }
 
+    final vwap = VwapConfig.enabledForSignals
+        ? Vwap.confluenceOf(c, TradeDirection.sell, entry)
+        : null;
+    var conf = score;
+    if (vwap != null) {
+      conf = vwap.adjust(conf, bonus: 6, penalty: 10, overPenalty: 8);
+    }
+    final ind = <String, String>{
+      'Tren': 'BEARISH (EMA50<EMA200)',
+      'Order Block': '${ob.low.toStringAsFixed(4)}–${ob.high.toStringAsFixed(4)}',
+      'Liquidity Sweep': sweepHigh.toStringAsFixed(4),
+      'CHoCH < ': hlLevel.toStringAsFixed(4),
+      'Imbalance(FVG)': gap.toStringAsFixed(4),
+      'Entry (limit)': entry.toStringAsFixed(4),
+      'Skor SMC': score.toStringAsFixed(0),
+      'RR': '1:2,5',
+    };
+    if (vwap != null && vwap.available) {
+      ind['VWAP (target)'] = vwap.vwapValue.toStringAsFixed(4);
+    }
     return StrategyResult(
       strategyId: id,
       strategyName: name,
       fired: true,
       direction: TradeDirection.sell,
-      confidence: score,
+      confidence: conf,
       entry: entry,
       stopLoss: sl,
       takeProfit: tp,
-      indicators: {
-        'Tren': 'BEARISH (EMA50<EMA200)',
-        'Order Block': '${ob.low.toStringAsFixed(4)}–${ob.high.toStringAsFixed(4)}',
-        'Liquidity Sweep': sweepHigh.toStringAsFixed(4),
-        'CHoCH < ': hlLevel.toStringAsFixed(4),
-        'Imbalance(FVG)': gap.toStringAsFixed(4),
-        'Entry (limit)': entry.toStringAsFixed(4),
-        'Skor SMC': score.toStringAsFixed(0),
-        'RR': '1:2,5',
-      },
+      indicators: ind,
       note: 'Sweep high → CHoCH bearish → imbalance → sell limit di OB',
     );
   }
