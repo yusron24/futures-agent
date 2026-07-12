@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../../config/format.dart';
 import '../../config/theme.dart';
 import '../../models/signal.dart';
+import '../../signals/paper_account.dart';
 import '../../state/app_state.dart';
+import '../backtest/backtest_page.dart';
 import '../widgets/signal_badge.dart';
 
 /// Halaman Riwayat Sinyal: log yang dapat difilter + statistik akurasi.
@@ -22,12 +24,21 @@ class _HistoryPageState extends State<HistoryPage> {
     final app = context.watch<AppState>();
     final stats = app.history.stats();
     final all = app.history.all();
+    final paper = app.paperStats();
     final filtered = all.where(_matches).toList();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Riwayat Sinyal'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.query_stats),
+            tooltip: 'Backtest',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const BacktestPage()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Bersihkan riwayat',
@@ -37,6 +48,7 @@ class _HistoryPageState extends State<HistoryPage> {
       ),
       body: Column(
         children: [
+          if (paper.trades > 0) _PaperCard(paper: paper),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -144,6 +156,77 @@ class _HistoryPageState extends State<HistoryPage> {
             Text(label,
                 style: const TextStyle(
                     color: AppColors.textSecondary, fontSize: 11)),
+          ],
+        ),
+      );
+}
+
+/// Kartu ringkas akun kertas (net, setelah biaya) — terpisah dari statistik
+/// gross di bawahnya.
+class _PaperCard extends StatelessWidget {
+  const _PaperCard({required this.paper});
+  final PaperSummary paper;
+
+  @override
+  Widget build(BuildContext context) {
+    final up = paper.netPnl >= 0;
+    final pf = paper.netProfitFactor;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.account_balance_wallet_outlined,
+                  size: 16, color: AppColors.textSecondary),
+              const SizedBox(width: 6),
+              const Text('Paper Account (net setelah biaya)',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              const Spacer(),
+              Text(
+                '${up ? '+' : ''}${paper.netPnlPct.toStringAsFixed(1)}%',
+                style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: up ? AppColors.buy : AppColors.sell),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _mini('Saldo', paper.balance.toStringAsFixed(0)),
+              _mini('PF net', pf == null ? '∞' : pf.toStringAsFixed(2)),
+              _mini('Ekspektansi', '${paper.netExpectancyR.toStringAsFixed(2)}R'),
+              _mini('Max DD', paper.maxDrawdown.toStringAsFixed(0)),
+              _mini('Trade', '${paper.trades}'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mini(String label, String value) => Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value,
+                style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary)),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 10, color: AppColors.textSecondary)),
           ],
         ),
       );

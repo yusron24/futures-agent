@@ -1,6 +1,5 @@
 import '../config/app_config.dart';
 import '../data/settings_repository.dart';
-import '../data/signal_history_repository.dart';
 import '../models/candle.dart';
 import '../models/signal.dart';
 import '../models/strategy_result.dart';
@@ -9,6 +8,7 @@ import '../strategies/strategy_registry.dart';
 import 'confidence_calibration.dart';
 import 'data_quality.dart';
 import 'market_regime.dart';
+import 'signal_stats_source.dart';
 
 /// Hasil evaluasi lengkap satu simbol: sinyal teragregasi + rincian tiap
 /// strategi (untuk halaman detail).
@@ -28,11 +28,16 @@ class SignalEngine {
   SignalEngine(this._settings, this._history);
 
   final SettingsRepository _settings;
-  final SignalHistoryRepository _history;
+  final SignalStatsSource _history;
 
   /// Evaluasi satu simbol pada candle yang sudah ditutup.
-  SymbolEvaluation evaluate(String symbol, List<Candle> closedCandles) {
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
+  ///
+  /// [nowMsOverride] menggantikan wall-clock sebagai SATU acuan waktu untuk
+  /// SEMUA gate berbasis waktu (stale data-gate + cooldown). Dipakai backtest
+  /// agar tidak bocor ke waktu nyata; live membiarkannya null.
+  SymbolEvaluation evaluate(String symbol, List<Candle> closedCandles,
+      {int? nowMsOverride}) {
+    final nowMs = nowMsOverride ?? DateTime.now().millisecondsSinceEpoch;
     final intervalMs = AppConfig.intervalMs(_settings.interval);
     final ts = closedCandles.isEmpty ? 0 : closedCandles.last.openTime;
 

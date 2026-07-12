@@ -14,6 +14,8 @@ import '../network/binance_rest_client.dart';
 import '../network/binance_ws_client.dart';
 import '../services/notification_service.dart';
 import '../services/system_health.dart';
+import '../signals/backtest_engine.dart';
+import '../signals/paper_account.dart';
 import '../signals/signal_engine.dart';
 
 /// State pusat aplikasi: mengorkestrasi REST + WebSocket (via proxy),
@@ -505,6 +507,23 @@ class AppState extends ChangeNotifier {
     isLoading = false;
     notifyListeners();
   }
+
+  // --- Fase 4: Backtest & Paper Trading ---
+
+  /// Jalankan backtest walk-forward atas candle tersimpan sebuah simbol.
+  BacktestReport runBacktest(String symbol) => BacktestRunner.run(
+        symbol: symbol,
+        candles: candles.closedCandles(symbol),
+        settings: settings,
+      );
+
+  /// Ringkasan akun kertas (net setelah biaya) dari seluruh riwayat sinyal.
+  PaperSummary paperStats() => PaperAccount.summarize(
+        history.all(),
+        startCapital: settings.simCapital,
+        riskAmount: settings.riskAmount(),
+        applyCost: AppConfig.tradeCostEnabledDefault,
+      );
 
   /// "Reset sinyal": abaikan sinyal aktif sebuah simbol. Ditandai `ignored`
   /// (tidak ikut statistik) & disingkirkan dari dashboard; candle/strategi tetap
