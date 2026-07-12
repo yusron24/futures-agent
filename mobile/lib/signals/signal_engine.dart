@@ -9,6 +9,7 @@ import 'confidence_calibration.dart';
 import 'data_quality.dart';
 import 'market_regime.dart';
 import 'signal_stats_source.dart';
+import 'trade_structure.dart';
 
 /// Alasan TERSTRUKTUR sebuah evaluasi (Fase 5 — observability). Dipetakan 1:1
 /// dengan setiap cabang keputusan di [SignalEngine.evaluate] agar metrik tidak
@@ -78,8 +79,9 @@ class SymbolEvaluation {
   final List<StrategyResult> results; // termasuk yang tidak menyala
   final RegimeState? regime; // snapshot regime pasar (Fase 3), bila dihitung
   final EvalReason reason; // alasan terstruktur (Fase 5)
+  final StructureReport? structure; // validasi struktur TP/SL (Fase 6)
   const SymbolEvaluation(this.signal, this.results,
-      {this.regime, this.reason = EvalReason.noSetup});
+      {this.regime, this.reason = EvalReason.noSetup, this.structure});
 
   List<StrategyResult> get firedResults =>
       results.where((r) => r.fired).toList();
@@ -247,6 +249,16 @@ class SignalEngine {
         ? entry + fixedRiskReward * risk
         : entry - fixedRiskReward * risk;
 
+    // VALIDASI STRUKTUR TP/SL (Fase 6): konteks risiko. TIDAK mengubah RR/arah/
+    // TP/SL — hanya menghasilkan temuan; penalti kecil hanya untuk `violation`.
+    final structure = TradeStructureValidator.validate(
+      isBuy: isBuy,
+      entry: entry,
+      stop: stop,
+      takeProfit: target,
+      candles: closedCandles,
+    );
+
     // CONFIDENCE — dua sumbu terpisah agar sample kecil tak menekan dua kali:
     // (1) confRaw = rata-rata confidence tertimbang bobot efektif (family-diskon,
     //     berbobot-akurasi).
@@ -275,6 +287,9 @@ class SignalEngine {
     if (!coreAnchored) confidence -= AppConfig.noCoreAnchorPenalty;
     // Penalti mutu data tingkat "warn".
     if (dq.severity == DqSeverity.warn) confidence -= 5;
+    // Penalti KECIL untuk pelanggaran struktur TP/SL jelas (jarak SL tak wajar).
+    // Informatif; TIDAK menjadi filter keras (Fase 6).
+    if (structure.hasViolation) confidence -= AppConfig.structViolationPenalty;
 
     // FILTER REGIME PASAR (Fase 3): SATU modifier confidence + hard-hold khusus
     // chop. TIDAK mengubah arah (arah tetap dari core di atas).
@@ -325,6 +340,7 @@ class SignalEngine {
         results,
         regime: regime,
         reason: EvalReason.belowThreshold,
+        structure: structure,
       );
     }
 
@@ -347,7 +363,7 @@ class SignalEngine {
       note: note,
     );
     return SymbolEvaluation(signal, results,
-        regime: regime, reason: EvalReason.actionable);
+        regime: regime, reason: EvalReason.actionable, structure: structure);
   }
 
   /// Rasio Risk:Reward tetap untuk setiap sinyal teragregasi (1:2,5).

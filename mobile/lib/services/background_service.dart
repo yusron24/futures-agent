@@ -79,6 +79,7 @@ class BackgroundService {
     if (settings.bgLastProcessedHour >= currentStepStart) return;
 
     final candles = CandleRepository();
+    candles.interval = settings.interval; // cache per timeframe (Fase 6)
     final history = SignalHistoryRepository();
     final engine = SignalEngine(settings, history);
     final rest = BinanceRestClient();

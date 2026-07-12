@@ -27,9 +27,11 @@ class HiveCache {
     _initialized = true;
   }
 
-  /// Box candle per simbol (lazy dibuka saat dibutuhkan).
-  static Future<Box<Candle>> candleBox(String symbol) async {
-    final name = '$candleBoxPrefix${symbol.toLowerCase()}';
+  /// Box candle per simbol × timeframe (lazy dibuka saat dibutuhkan). Memisahkan
+  /// cache tiap interval agar berganti timeframe tidak menghapus/menimpa data
+  /// timeframe lain (Fase 6).
+  static Future<Box<Candle>> candleBox(String symbol, String interval) async {
+    final name = '$candleBoxPrefix${symbol.toLowerCase()}_$interval';
     if (Hive.isBoxOpen(name)) return Hive.box<Candle>(name);
     return Hive.openBox<Candle>(name);
   }

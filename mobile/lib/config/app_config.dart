@@ -193,6 +193,15 @@ class AppConfig {
   // ---------------------------------------------------------------------------
   static const int signalSchemaVersion = 2;
 
+  // ---------------------------------------------------------------------------
+  // VALIDASI STRUKTUR TP/SL (Fase 6) — konteks risiko. Hanya jarak SL tak wajar
+  // yang memicu penalti confidence KECIL (bukan filter keras). Tunable.
+  // ---------------------------------------------------------------------------
+  static const double structMinRiskPct = 0.003; // SL < 0,3% entry → terlalu ketat
+  static const double structMaxRiskPct = 0.15; // SL > 15% entry → terlalu lebar
+  static const int structKeyLevelLookback = 120;
+  static const double structViolationPenalty = 5; // penalti kecil, tunable
+
   /// Simbol default yang dipantau (fallback saat mode kustom / sebelum daftar
   /// top-volume berhasil diambil). Catatan: MATIC sudah di-rename menjadi POL di
   /// Binance, sehingga dipakai POLUSDT.
