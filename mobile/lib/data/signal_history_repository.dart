@@ -2,6 +2,8 @@ import '../config/app_config.dart';
 import '../models/candle.dart';
 import '../models/signal.dart';
 import '../signals/confidence_calibration.dart';
+import '../signals/signal_stats_source.dart';
+import '../signals/trade_simulator.dart';
 import 'hive_cache.dart';
 
 /// Statistik akurasi satu strategi (berbobot-waktu; wins/losses bisa pecahan
@@ -19,7 +21,7 @@ class StrategyAccuracy {
 
 /// Menyimpan riwayat sinyal, mengevaluasi hasil (TP/SL), dan melacak akurasi
 /// historis per strategi untuk pembobotan keyakinan.
-class SignalHistoryRepository {
+class SignalHistoryRepository implements SignalStatsSource {
   final _box = HiveCache.signals();
   final _acc = HiveCache.accuracy();
   final _cool = HiveCache.settings();
@@ -28,6 +30,7 @@ class SignalHistoryRepository {
   int cooldownUntil(String symbol) =>
       (_cool.get('cooldown_$symbol') as num?)?.toInt() ?? 0;
 
+  @override
   bool inCooldown(String symbol, int nowMs) => nowMs < cooldownUntil(symbol);
 
   Future<void> setCooldown(String symbol, int untilMs) async =>
@@ -54,6 +57,7 @@ class SignalHistoryRepository {
 
   /// Akurasi TERKALIBRASI (shrinkage sample kecil) — dipakai engine sebagai
   /// bobot arah agar strategi minim histori tidak overconfident.
+  @override
   double calibratedAccuracy(String strategyId) {
     final a = accuracyOf(strategyId);
     return ConfidenceCalibration.shrunkAccuracy(a.wins, a.losses);
@@ -94,51 +98,35 @@ class SignalHistoryRepository {
     final resolved = <Signal>[];
     for (final s in pending()) {
       if (s.symbol != symbol || !s.isActionable) continue;
-      // Periksa candle yang tertutup SETELAH timestamp sinyal.
-      for (final c in closedCandles) {
-        if (c.openTime <= s.timestamp) continue;
-        String? outcome;
-        if (s.isBuy) {
-          final hitSl = c.low <= s.stopLoss;
-          final hitTp = c.high >= s.takeProfit;
-          // Konservatif: bila keduanya tersentuh dalam satu candle, anggap SL.
-          if (hitSl) {
-            outcome = SignalOutcome.slHit;
-          } else if (hitTp) {
-            outcome = SignalOutcome.tpHit;
-          }
-        } else {
-          final hitSl = c.high >= s.stopLoss;
-          final hitTp = c.low <= s.takeProfit;
-          if (hitSl) {
-            outcome = SignalOutcome.slHit;
-          } else if (hitTp) {
-            outcome = SignalOutcome.tpHit;
-          }
-        }
-        if (outcome != null) {
-          // Laba/rugi dalam kelipatan-R: +riskReward saat TP, −1 saat SL.
-          final pl = outcome == SignalOutcome.tpHit ? s.riskReward : -1.0;
-          final updated = s.copyWith(
-            outcome: outcome,
-            resolvedAt: c.closeTime,
-            profitLoss: pl,
-          );
-          await _box.put(updated.key, updated);
-          await _recordOutcome(
-            s.triggeredStrategies,
-            outcome == SignalOutcome.tpHit,
-          );
-          // Pasang cooldown: lebih panjang setelah SL daripada TP.
-          if (cooldownMs > 0) {
-            final mult = outcome == SignalOutcome.slHit ? 1.0 : 0.5;
-            await setCooldown(
-                symbol, c.closeTime + (cooldownMs * mult).round());
-          }
-          resolved.add(updated);
-          break;
-        }
+      // Simulator TP/SL bersama (satu sumber kebenaran dengan backtest).
+      final sim = simulateTradeOutcome(
+        isBuy: s.isBuy,
+        stopLoss: s.stopLoss,
+        takeProfit: s.takeProfit,
+        afterTs: s.timestamp,
+        candles: closedCandles,
+      );
+      final outcome = sim.outcome;
+      if (outcome == null) continue;
+      // Laba/rugi dalam kelipatan-R: +riskReward saat TP, −1 saat SL.
+      final pl = outcome == SignalOutcome.tpHit ? s.riskReward : -1.0;
+      final updated = s.copyWith(
+        outcome: outcome,
+        resolvedAt: sim.resolvedAt,
+        profitLoss: pl,
+      );
+      await _box.put(updated.key, updated);
+      await _recordOutcome(
+        s.triggeredStrategies,
+        outcome == SignalOutcome.tpHit,
+      );
+      // Pasang cooldown: lebih panjang setelah SL daripada TP.
+      if (cooldownMs > 0) {
+        final mult = outcome == SignalOutcome.slHit ? 1.0 : 0.5;
+        await setCooldown(
+            symbol, sim.resolvedAt + (cooldownMs * mult).round());
       }
+      resolved.add(updated);
     }
     return resolved;
   }

@@ -173,6 +173,20 @@ class AppConfig {
   static const double regimeAdjMaxDown = 25; // clamp penalti maksimum
   static const double regimeAdjMaxUp = 6; // clamp bonus maksimum
 
+  // ---------------------------------------------------------------------------
+  // TRADE COST + BACKTEST + PAPER TRADING (Fase 4)
+  // ---------------------------------------------------------------------------
+  /// Biaya transaksi (persen per sisi) & slippage — dipakai model biaya untuk
+  /// mengubah P/L teoretis (R) menjadi net. Default mendekati taker fee Binance.
+  static const double tradeFeePctPerSide = 0.04; // 0,04% per sisi (masuk/keluar)
+  static const double tradeSlippagePct = 0.02; // 0,02% slippage round-trip
+  static const bool tradeCostEnabledDefault = true;
+
+  /// Backtest walk-forward: candle awal yang di-skip untuk pemanasan indikator
+  /// (mis. EMA200 valid) dan minimal candle agar backtest berjalan.
+  static const int backtestWarmupCandles = 250;
+  static const int backtestMinCandles = 300;
+
   /// Simbol default yang dipantau (fallback saat mode kustom / sebelum daftar
   /// top-volume berhasil diambil). Catatan: MATIC sudah di-rename menjadi POL di
   /// Binance, sehingga dipakai POLUSDT.
