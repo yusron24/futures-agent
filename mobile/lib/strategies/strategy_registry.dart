@@ -1,5 +1,6 @@
 import 'breakout_key_level_volume.dart';
 import 'double_bottom_top.dart';
+import 'fib_retracement_stochastic.dart';
 import 'liquidity_swap_sniper_entry.dart';
 import 'macd_divergence.dart';
 import 'ma_crossover_adx.dart';
@@ -18,6 +19,7 @@ class StrategyRegistry {
     DoubleBottomTop(),
     MaCrossoverAdx(),
     LiquiditySwapSniperEntry(),
+    FibRetracementStochastic(),
   ];
 
   static Strategy? byId(String id) {
