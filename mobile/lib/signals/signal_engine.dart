@@ -8,13 +8,15 @@ import '../strategies/strategy.dart';
 import '../strategies/strategy_registry.dart';
 import 'confidence_calibration.dart';
 import 'data_quality.dart';
+import 'market_regime.dart';
 
 /// Hasil evaluasi lengkap satu simbol: sinyal teragregasi + rincian tiap
 /// strategi (untuk halaman detail).
 class SymbolEvaluation {
   final Signal signal;
   final List<StrategyResult> results; // termasuk yang tidak menyala
-  const SymbolEvaluation(this.signal, this.results);
+  final RegimeState? regime; // snapshot regime pasar (Fase 3), bila dihitung
+  const SymbolEvaluation(this.signal, this.results, [this.regime]);
 
   List<StrategyResult> get firedResults =>
       results.where((r) => r.fired).toList();
@@ -200,6 +202,28 @@ class SignalEngine {
     if (!coreAnchored) confidence -= AppConfig.noCoreAnchorPenalty;
     // Penalti mutu data tingkat "warn".
     if (dq.severity == DqSeverity.warn) confidence -= 5;
+
+    // FILTER REGIME PASAR (Fase 3): SATU modifier confidence + hard-hold khusus
+    // chop. TIDAK mengubah arah (arah tetap dari core di atas).
+    RegimeState? regime;
+    if (_settings.regimeFilterEnabled) {
+      regime = MarketRegimeDetector.detect(closedCandles);
+      // Hard-hold hanya untuk chop tanpa arah (ATR tinggi ∧ ADX rendah).
+      // Directional volatility (tren + ATR tinggi) TIDAK ditahan.
+      if (regime.hold) {
+        return SymbolEvaluation(
+          _neutral(symbol, ts,
+              'Regime ${regime.label} (ATR tinggi tanpa arah) — menahan sinyal'),
+          results,
+          regime,
+        );
+      }
+      confidence += MarketRegimeDetector.confidenceAdjustment(
+        regime,
+        anchorDir,
+        dirResults.map((r) => (familyOf(r.strategyId), structW(r))).toList(),
+      );
+    }
     confidence = confidence.clamp(0, 100);
 
     // COOLDOWN: setelah TP/SL simbol ini, tahan sinyal baru beberapa candle
@@ -208,6 +232,7 @@ class SignalEngine {
       return SymbolEvaluation(
         _neutral(symbol, ts, 'Cooldown aktif — menahan sinyal baru'),
         results,
+        regime,
       );
     }
 
@@ -223,12 +248,15 @@ class SignalEngine {
               '${AppConfig.minSignalConfidence.toStringAsFixed(0)}% — dilewati',
         ),
         results,
+        regime,
       );
     }
 
-    final note = dirResults.length >= 2
+    final baseNote = dirResults.length >= 2
         ? '${dirResults.length} strategi searah (RR 1:2,5)'
         : dirResults.first.note;
+    final note =
+        regime != null ? '$baseNote · Regime: ${regime.label}' : baseNote;
 
     final signal = Signal(
       symbol: symbol,
@@ -242,7 +270,7 @@ class SignalEngine {
       timestamp: ts,
       note: note,
     );
-    return SymbolEvaluation(signal, results);
+    return SymbolEvaluation(signal, results, regime);
   }
 
   /// Rasio Risk:Reward tetap untuk setiap sinyal teragregasi (1:2,5).
