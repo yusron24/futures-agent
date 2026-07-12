@@ -1,5 +1,7 @@
 import 'package:hive/hive.dart';
 
+import '../config/app_config.dart';
+
 part 'signal.g.dart';
 
 /// Status hasil sebuah sinyal setelah dievaluasi terhadap harga berikutnya.
@@ -61,6 +63,11 @@ class Signal {
   @HiveField(12)
   final double profitLoss;
 
+  /// Versi skema sinyal saat dibuat (Fase 5). Rekaman lama (tanpa field ini)
+  /// dibaca sebagai versi 1 oleh adapter → provenance & jalur migrasi.
+  @HiveField(13)
+  final int schemaVersion;
+
   const Signal({
     required this.symbol,
     required this.direction,
@@ -75,6 +82,7 @@ class Signal {
     this.outcome = SignalOutcome.pending,
     this.resolvedAt = 0,
     this.profitLoss = 0,
+    this.schemaVersion = AppConfig.signalSchemaVersion,
   });
 
   bool get isActionable =>
@@ -97,6 +105,7 @@ class Signal {
         outcome: outcome ?? this.outcome,
         resolvedAt: resolvedAt ?? this.resolvedAt,
         profitLoss: profitLoss ?? this.profitLoss,
+        schemaVersion: schemaVersion,
       );
 
   DateTime get time =>

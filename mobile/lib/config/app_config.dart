@@ -187,6 +187,12 @@ class AppConfig {
   static const int backtestWarmupCandles = 250;
   static const int backtestMinCandles = 300;
 
+  // ---------------------------------------------------------------------------
+  // VERSIONING SKEMA SINYAL (Fase 5) — dinaikkan saat bentuk/isi Signal berubah
+  // secara semantik, untuk provenance & jalur migrasi ke depan.
+  // ---------------------------------------------------------------------------
+  static const int signalSchemaVersion = 2;
+
   /// Simbol default yang dipantau (fallback saat mode kustom / sebelum daftar
   /// top-volume berhasil diambil). Catatan: MATIC sudah di-rename menjadi POL di
   /// Binance, sehingga dipakai POLUSDT.

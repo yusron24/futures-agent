@@ -228,6 +228,13 @@ class SettingsRepository {
   set cooldownCandles(int v) => _box.put('cooldown_candles',
       v.clamp(AppConfig.cooldownCandlesMin, AppConfig.cooldownCandlesMax));
 
+  // --- Versi skema (Fase 5) ---
+  /// Versi skema terakhir yang tercatat di penyimpanan. Dipakai Diagnostik untuk
+  /// menampilkan drift versi (hook migrasi masa depan). Default = versi lama 1.
+  int get storedSchemaVersion =>
+      (_box.get('schema_version') as num?)?.toInt() ?? 1;
+  set storedSchemaVersion(int v) => _box.put('schema_version', v);
+
   // --- Filter regime pasar (Fase 3) ---
   /// Bila aktif: sesuaikan confidence menurut regime (tren/range) & tahan sinyal
   /// saat chop volatil tanpa arah. Tidak mengubah pemilihan arah.

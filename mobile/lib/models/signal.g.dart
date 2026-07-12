@@ -27,13 +27,15 @@ class SignalAdapter extends TypeAdapter<Signal> {
       outcome: fields[10] as String? ?? SignalOutcome.pending,
       resolvedAt: fields[11] as int? ?? 0,
       profitLoss: (fields[12] as num?)?.toDouble() ?? 0,
+      // Rekaman LAMA tanpa field 13 → skema versi 1 (backward-compatible).
+      schemaVersion: fields[13] as int? ?? 1,
     );
   }
 
   @override
   void write(BinaryWriter writer, Signal obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.symbol)
       ..writeByte(1)
@@ -59,7 +61,9 @@ class SignalAdapter extends TypeAdapter<Signal> {
       ..writeByte(11)
       ..write(obj.resolvedAt)
       ..writeByte(12)
-      ..write(obj.profitLoss);
+      ..write(obj.profitLoss)
+      ..writeByte(13)
+      ..write(obj.schemaVersion);
   }
 
   @override
