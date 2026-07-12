@@ -45,8 +45,10 @@ List<Candle> _mk(List<double> closes, {double lastVol = 100}) {
   return out;
 }
 
-// Tail bottom + uptick di zona 0.618–0.786 (memicu stochastic crossover oversold).
-final _validTail = <double>[110.0, 110.0, 110.0, 110.0, 110.0, 110.5];
+// Tail: close tinggi (113) mengangkat D, lalu K tertekan di dasar (109.9),
+// kemudian uptick tegas (111.5) → crossover bullish segar saat oversold, di
+// dalam zona Fib 0.618–0.786.
+final _validTail = <double>[113.0, 109.9, 109.9, 109.9, 109.9, 111.5];
 // Tail lanjut turun (tanpa crossover).
 final _noReboundTail = <double>[110.0, 109.9, 109.8, 109.7, 109.6, 109.4];
 
