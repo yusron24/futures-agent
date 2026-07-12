@@ -10,13 +10,76 @@ import 'data_quality.dart';
 import 'market_regime.dart';
 import 'signal_stats_source.dart';
 
+/// Alasan TERSTRUKTUR sebuah evaluasi (Fase 5 — observability). Dipetakan 1:1
+/// dengan setiap cabang keputusan di [SignalEngine.evaluate] agar metrik tidak
+/// bias & UI tak perlu menebak dari teks `note`.
+enum EvalReason {
+  /// Sinyal aktif dihasilkan (BUY/SELL, confidence ≥ ambang).
+  actionable,
+
+  /// Tak ada strategi yang menyala.
+  noSetup,
+
+  /// Gerbang mutu data memblokir (candle bolong/duplikat/stale) saat mode ketat.
+  dataBlocked,
+
+  /// Strategi CORE bertentangan arah (BUY vs SELL).
+  coreConflict,
+
+  /// Hanya strategi experimental (observasi) yang menyala.
+  observationOnly,
+
+  /// Strategi secondary bertentangan arah (tanpa core).
+  signalConflict,
+
+  /// Regime volatil/chop tanpa arah → sinyal ditahan (Fase 3).
+  regimeHold,
+
+  /// Simbol dalam cooldown setelah TP/SL.
+  cooldown,
+
+  /// Keyakinan di bawah ambang minimal.
+  belowThreshold,
+}
+
+/// Label ramah-pengguna (Indonesia) untuk [EvalReason].
+extension EvalReasonLabel on EvalReason {
+  String get label {
+    switch (this) {
+      case EvalReason.actionable:
+        return 'Sinyal aktif';
+      case EvalReason.noSetup:
+        return 'Tidak ada setup';
+      case EvalReason.dataBlocked:
+        return 'Mutu data buruk';
+      case EvalReason.coreConflict:
+        return 'Core bertentangan';
+      case EvalReason.observationOnly:
+        return 'Hanya observasi';
+      case EvalReason.signalConflict:
+        return 'Strategi bertentangan';
+      case EvalReason.regimeHold:
+        return 'Regime volatil (ditahan)';
+      case EvalReason.cooldown:
+        return 'Cooldown';
+      case EvalReason.belowThreshold:
+        return 'Di bawah ambang';
+    }
+  }
+
+  /// True bila evaluasi TIDAK menghasilkan sinyal aktif (ditahan/kosong).
+  bool get isHeld => this != EvalReason.actionable;
+}
+
 /// Hasil evaluasi lengkap satu simbol: sinyal teragregasi + rincian tiap
 /// strategi (untuk halaman detail).
 class SymbolEvaluation {
   final Signal signal;
   final List<StrategyResult> results; // termasuk yang tidak menyala
   final RegimeState? regime; // snapshot regime pasar (Fase 3), bila dihitung
-  const SymbolEvaluation(this.signal, this.results, [this.regime]);
+  final EvalReason reason; // alasan terstruktur (Fase 5)
+  const SymbolEvaluation(this.signal, this.results,
+      {this.regime, this.reason = EvalReason.noSetup});
 
   List<StrategyResult> get firedResults =>
       results.where((r) => r.fired).toList();
@@ -52,6 +115,7 @@ class SignalEngine {
       return SymbolEvaluation(
         _neutral(symbol, ts, 'Mutu data buruk: ${dq.summary}'),
         const [],
+        reason: EvalReason.dataBlocked,
       );
     }
 
@@ -73,6 +137,7 @@ class SignalEngine {
       return SymbolEvaluation(
         _neutral(symbol, ts, 'Tidak ada setup'),
         results,
+        reason: EvalReason.noSetup,
       );
     }
 
@@ -115,6 +180,7 @@ class SignalEngine {
         return SymbolEvaluation(
           _neutral(symbol, ts, 'Core bertentangan (BUY vs SELL)'),
           results,
+          reason: EvalReason.coreConflict,
         );
       }
       anchorDir =
@@ -128,6 +194,7 @@ class SignalEngine {
           _neutral(symbol, ts,
               'Hanya strategi observasi — menunggu konfirmasi core/secondary'),
           results,
+          reason: EvalReason.observationOnly,
         );
       }
       coreAnchored = false;
@@ -137,6 +204,7 @@ class SignalEngine {
         return SymbolEvaluation(
           _neutral(symbol, ts, 'Strategi bertentangan (BUY vs SELL)'),
           results,
+          reason: EvalReason.signalConflict,
         );
       }
       anchorDir =
@@ -220,7 +288,8 @@ class SignalEngine {
           _neutral(symbol, ts,
               'Regime ${regime.label} (ATR tinggi tanpa arah) — menahan sinyal'),
           results,
-          regime,
+          regime: regime,
+          reason: EvalReason.regimeHold,
         );
       }
       confidence += MarketRegimeDetector.confidenceAdjustment(
@@ -237,7 +306,8 @@ class SignalEngine {
       return SymbolEvaluation(
         _neutral(symbol, ts, 'Cooldown aktif — menahan sinyal baru'),
         results,
-        regime,
+        regime: regime,
+        reason: EvalReason.cooldown,
       );
     }
 
@@ -253,7 +323,8 @@ class SignalEngine {
               '${AppConfig.minSignalConfidence.toStringAsFixed(0)}% — dilewati',
         ),
         results,
-        regime,
+        regime: regime,
+        reason: EvalReason.belowThreshold,
       );
     }
 
@@ -275,7 +346,8 @@ class SignalEngine {
       timestamp: ts,
       note: note,
     );
-    return SymbolEvaluation(signal, results, regime);
+    return SymbolEvaluation(signal, results,
+        regime: regime, reason: EvalReason.actionable);
   }
 
   /// Rasio Risk:Reward tetap untuk setiap sinyal teragregasi (1:2,5).

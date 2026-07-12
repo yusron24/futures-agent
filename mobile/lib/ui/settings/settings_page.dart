@@ -7,6 +7,7 @@ import '../../config/theme.dart';
 import '../../data/settings_repository.dart';
 import '../../strategies/strategy_registry.dart';
 import '../../state/app_state.dart';
+import '../diagnostics/diagnostics_page.dart';
 
 /// Halaman Pengaturan: aktif/nonaktif strategi, risiko per trade, notifikasi,
 /// suara & getaran, serta pengelolaan simbol.
@@ -600,6 +601,22 @@ class _SettingsPageState extends State<SettingsPage> {
                         color: AppColors.textSecondary, fontSize: 11),
                   ),
                 ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          _sectionTitle('Diagnostik & Versi'),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.monitor_heart_outlined,
+                  color: AppColors.primary),
+              title: const Text('Diagnostik sistem'),
+              subtitle: const Text(
+                  'Kesehatan, metrik alur sinyal, akurasi strategi, versi skema'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DiagnosticsPage()),
               ),
             ),
           ),

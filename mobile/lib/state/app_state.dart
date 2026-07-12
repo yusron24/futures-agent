@@ -13,6 +13,7 @@ import '../models/symbol_ticker.dart';
 import '../network/binance_rest_client.dart';
 import '../network/binance_ws_client.dart';
 import '../services/notification_service.dart';
+import '../services/pipeline_metrics.dart';
 import '../services/system_health.dart';
 import '../signals/backtest_engine.dart';
 import '../signals/paper_account.dart';
@@ -425,7 +426,10 @@ class AppState extends ChangeNotifier {
   void _evaluateSymbol(String symbol, {required bool notify}) {
     final closed = candles.closedCandles(symbol);
     if (closed.length < 30) return;
-    evaluations[symbol] = engine.evaluate(symbol, closed);
+    final eval = engine.evaluate(symbol, closed);
+    evaluations[symbol] = eval;
+    // Observability (Fase 5): catat alasan evaluasi ke metrik pipeline.
+    PipelineMetrics.instance.record(eval.reason);
     if (notify) notifyListeners();
   }
 
