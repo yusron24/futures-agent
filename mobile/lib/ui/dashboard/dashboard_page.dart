@@ -12,13 +12,46 @@ import '../widgets/live_price.dart';
 import '../widgets/signal_badge.dart';
 
 /// Dashboard utama: daftar simbol yang dipantau dengan harga, perubahan 24 jam,
-/// dan sinyal terbaru + keyakinan.
-class DashboardPage extends StatelessWidget {
+/// dan sinyal terbaru + keyakinan. Dilengkapi pencarian pair + filter "hanya
+/// yang ada sinyal" agar tak perlu scroll panjang mencari setup.
+class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
+
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  final _search = TextEditingController();
+  String _query = '';
+  bool _onlySignals = false;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  /// Simbol setelah filter pencarian + "hanya bersinyal".
+  List<String> _visibleSymbols(AppState app) {
+    final q = _query.trim().toUpperCase();
+    return app.symbols.where((s) {
+      if (q.isNotEmpty && !s.toUpperCase().contains(q)) return false;
+      if (_onlySignals &&
+          !(app.evaluationFor(s)?.signal.isActionable ?? false)) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    final visible = _visibleSymbols(app);
+    final signalCount = app.symbols
+        .where((s) => app.evaluationFor(s)?.signal.isActionable ?? false)
+        .length;
 
     return Scaffold(
       appBar: AppBar(
@@ -39,21 +72,143 @@ class DashboardPage extends StatelessWidget {
           const SizedBox(width: 12),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: app.refreshAll,
-        color: AppColors.primary,
-        child: app.isLoading && app.evaluations.isEmpty
-            ? const _LoadingList()
-            : ListView(
-                padding: const EdgeInsets.all(12),
-                children: [
-                  if (app.signalsHeld)
-                    _SafeModeBanner(reason: app.healthReason),
-                  if (app.errorMessage != null)
-                    _OfflineBanner(message: app.errorMessage!),
-                  ...app.symbols.map((s) => _SymbolCard(symbol: s)),
-                ],
+      body: Column(
+        children: [
+          _SearchBar(
+            controller: _search,
+            onChanged: (v) => setState(() => _query = v),
+            onlySignals: _onlySignals,
+            signalCount: signalCount,
+            onToggleSignals: () =>
+                setState(() => _onlySignals = !_onlySignals),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: app.refreshAll,
+              color: AppColors.primary,
+              child: app.isLoading && app.evaluations.isEmpty
+                  ? const _LoadingList()
+                  : ListView(
+                      padding: const EdgeInsets.all(12),
+                      children: [
+                        if (app.signalsHeld)
+                          _SafeModeBanner(reason: app.healthReason),
+                        if (app.errorMessage != null)
+                          _OfflineBanner(message: app.errorMessage!),
+                        if (visible.isEmpty)
+                          _NoResults(
+                              query: _query, onlySignals: _onlySignals)
+                        else
+                          ...visible.map((s) => _SymbolCard(symbol: s)),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bilah pencarian pair + filter cepat "hanya yang ada sinyal".
+class _SearchBar extends StatelessWidget {
+  const _SearchBar({
+    required this.controller,
+    required this.onChanged,
+    required this.onlySignals,
+    required this.signalCount,
+    required this.onToggleSignals,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final bool onlySignals;
+  final int signalCount;
+  final VoidCallback onToggleSignals;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              onChanged: onChanged,
+              textInputAction: TextInputAction.search,
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Cari pair (mis. BTC)',
+                hintStyle: const TextStyle(color: AppColors.textSecondary),
+                prefixIcon: const Icon(Icons.search,
+                    size: 20, color: AppColors.textSecondary),
+                suffixIcon: controller.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        color: AppColors.textSecondary,
+                        onPressed: () {
+                          controller.clear();
+                          onChanged('');
+                        },
+                      ),
+                filled: true,
+                fillColor: AppColors.surfaceAlt,
+                contentPadding:
+                    const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
               ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilterChip(
+            label: Text('Sinyal ${signalCount > 0 ? '($signalCount)' : ''}'),
+            selected: onlySignals,
+            onSelected: (_) => onToggleSignals(),
+            showCheckmark: false,
+            selectedColor: AppColors.primary,
+            backgroundColor: AppColors.surfaceAlt,
+            labelStyle: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: onlySignals ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pesan saat filter tidak menghasilkan pair.
+class _NoResults extends StatelessWidget {
+  const _NoResults({required this.query, required this.onlySignals});
+  final String query;
+  final bool onlySignals;
+
+  @override
+  Widget build(BuildContext context) {
+    final msg = onlySignals && query.trim().isEmpty
+        ? 'Belum ada pair dengan sinyal aktif saat ini.'
+        : 'Tidak ada pair cocok untuk "${query.trim()}".';
+    return Padding(
+      padding: const EdgeInsets.only(top: 48),
+      child: Center(
+        child: Column(
+          children: [
+            const Icon(Icons.search_off,
+                size: 40, color: AppColors.textSecondary),
+            const SizedBox(height: 12),
+            Text(msg,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.textSecondary)),
+          ],
+        ),
       ),
     );
   }
