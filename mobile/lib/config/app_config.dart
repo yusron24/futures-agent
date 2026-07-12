@@ -150,6 +150,29 @@ class AppConfig {
   static const double vwapBand2Penalty = 20; // menembus band-1 (besar)
   // band-3 (menembus band-2) → hard veto di strategi.
 
+  // ---------------------------------------------------------------------------
+  // MARKET REGIME FILTER (Fase 3) — ADX + ATR. SATU modifier confidence +
+  // hard-hold khusus chop. TIDAK menentukan arah (arah tetap dari core).
+  // ---------------------------------------------------------------------------
+  static const bool regimeFilterEnabledDefault = true;
+
+  /// Ambang ADX: ≥ trendMin → tren (walau ATR tinggi = boleh trading);
+  /// ≤ rangeMax → range; di antara = transisi (histeresis).
+  static const double regimeAdxTrendMin = 22;
+  static const double regimeAdxRangeMax = 18;
+
+  /// ATR% (atr/close) di atas ini + ADX rendah = chop tanpa arah → hard-hold.
+  /// Directional volatility (ATR tinggi tapi ADX tinggi) TIDAK ditahan.
+  static const double regimeAtrPctVolatile = 0.05;
+
+  /// Penyesuaian confidence (poin). Sengaja lembut agar setup bagus tetap ≥70%.
+  static const double regimeCounterTrendPenalty = 15; // lawan arah tren kuat
+  static const double regimeAlignedBonus = 5; // searah tren kuat (clamp)
+  static const double regimeRangeMismatchPenalty = 12; // family tren di sideways
+  static const double regimeTransitionalPenalty = 3; // zona abu-abu (tunable→0)
+  static const double regimeAdjMaxDown = 25; // clamp penalti maksimum
+  static const double regimeAdjMaxUp = 6; // clamp bonus maksimum
+
   /// Simbol default yang dipantau (fallback saat mode kustom / sebelum daftar
   /// top-volume berhasil diambil). Catatan: MATIC sudah di-rename menjadi POL di
   /// Binance, sehingga dipakai POLUSDT.

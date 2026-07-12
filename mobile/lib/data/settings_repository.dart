@@ -228,6 +228,14 @@ class SettingsRepository {
   set cooldownCandles(int v) => _box.put('cooldown_candles',
       v.clamp(AppConfig.cooldownCandlesMin, AppConfig.cooldownCandlesMax));
 
+  // --- Filter regime pasar (Fase 3) ---
+  /// Bila aktif: sesuaikan confidence menurut regime (tren/range) & tahan sinyal
+  /// saat chop volatil tanpa arah. Tidak mengubah pemilihan arah.
+  bool get regimeFilterEnabled =>
+      _box.get('regime_filter_enabled',
+          defaultValue: AppConfig.regimeFilterEnabledDefault) as bool;
+  set regimeFilterEnabled(bool v) => _box.put('regime_filter_enabled', v);
+
   /// Ukuran posisi simulasi berdasarkan risiko: jumlah modal yang dipertaruhkan.
   double riskAmount() => simCapital * (riskPercent / 100.0);
 }
