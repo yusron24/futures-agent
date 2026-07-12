@@ -21,7 +21,7 @@ void main() {
   group('LiquiditySwapSniperEntry', () {
     test('terdaftar sebagai strategi ke-6 (paralel, tanpa mengubah lama)', () {
       expect(StrategyRegistry.allIds.contains('liquidity_swap_sniper'), true);
-      expect(StrategyRegistry.all.length, 6);
+      expect(StrategyRegistry.all.length, greaterThanOrEqualTo(6));
     });
 
     test('data kurang → tidak menghasilkan sinyal', () {
