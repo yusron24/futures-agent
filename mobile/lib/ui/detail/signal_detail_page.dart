@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../config/format.dart';
 import '../../config/theme.dart';
 import '../../models/strategy_result.dart';
+import '../../signals/signal_explanation.dart';
 import '../../state/app_state.dart';
 import '../widgets/live_price.dart';
 import '../widgets/signal_badge.dart';
@@ -118,6 +119,10 @@ class _SignalDetailPageState extends State<SignalDetailPage> {
                 ),
               ),
             ),
+          if (eval != null) ...[
+            _ExplanationCard(explanation: SignalExplanation.build(eval)),
+            const SizedBox(height: 16),
+          ],
           const Text('Ringkasan Strategi',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
@@ -152,6 +157,96 @@ class _SignalDetailPageState extends State<SignalDetailPage> {
       await app.ignoreSignal(widget.symbol);
       if (context.mounted) Navigator.pop(context);
     }
+  }
+}
+
+/// Kartu "Penjelasan Sinyal" (Fase 6): merangkai mengapa arah/keyakinan ini
+/// terbentuk (atau mengapa ditahan), dari faktor-faktor terstruktur.
+class _ExplanationCard extends StatelessWidget {
+  const _ExplanationCard({required this.explanation});
+  final SignalExplanation explanation;
+
+  Color _color(FactorPolarity p) {
+    switch (p) {
+      case FactorPolarity.positive:
+        return AppColors.buy;
+      case FactorPolarity.negative:
+        return AppColors.sell;
+      case FactorPolarity.neutral:
+        return AppColors.textSecondary;
+    }
+  }
+
+  IconData _icon(FactorPolarity p) {
+    switch (p) {
+      case FactorPolarity.positive:
+        return Icons.add_circle_outline;
+      case FactorPolarity.negative:
+        return Icons.remove_circle_outline;
+      case FactorPolarity.neutral:
+        return Icons.circle_outlined;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.lightbulb_outline,
+                    size: 16, color: AppColors.primary),
+                const SizedBox(width: 6),
+                const Text('Penjelasan Sinyal',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(explanation.headline,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary)),
+            const SizedBox(height: 10),
+            for (final f in explanation.factors)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(_icon(f.polarity), size: 15, color: _color(f.polarity)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: const TextStyle(
+                              fontSize: 12.5, color: AppColors.textPrimary),
+                          children: [
+                            TextSpan(
+                                text: '${f.label}: ',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700)),
+                            TextSpan(
+                                text: f.detail,
+                                style: const TextStyle(
+                                    color: AppColors.textSecondary)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

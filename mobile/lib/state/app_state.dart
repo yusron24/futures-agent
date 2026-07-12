@@ -94,6 +94,9 @@ class AppState extends ChangeNotifier {
       await _resolveTopSymbols(silent: true);
     }
 
+    // Selaraskan timeframe cache dengan pengaturan (Fase 6: cache per interval).
+    candles.interval = settings.interval;
+
     // 1) Muat cache dulu agar UI langsung terisi (mendukung offline).
     for (final s in symbols) {
       final cached = await candles.loadCached(s);
@@ -491,21 +494,26 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Ganti timeframe/interval candle. Karena cache candle di-key per simbol
-  /// (bukan per interval), cache lama harus dikosongkan agar tidak mencampur
-  /// timeframe; lalu warmup ulang via REST + sambung ulang WS.
+  /// Ganti timeframe/interval candle. Cache di-key per simbol×interval (Fase 6),
+  /// jadi TIDAK perlu menghapus timeframe lama — cukup pindah interval aktif,
+  /// muat cache timeframe tsb (bila ada, tampil instan), lalu segarkan via REST
+  /// + sambung ulang WS. Kembali ke timeframe sebelumnya juga instan.
   Future<void> setInterval(String interval) async {
     if (interval == settings.interval) return;
     if (!AppConfig.allowedIntervals.contains(interval)) return;
     settings.interval = interval;
+    candles.interval = interval; // pindah cache aktif (tanpa menghapus lama)
     // Reset guard background agar candle baru diproses ulang di jam/step ini.
     settings.bgLastProcessedHour = 0;
     isLoading = true;
     evaluations.clear();
     notifyListeners();
+    // Muat cache timeframe baru bila tersedia (offline-friendly, tanpa fetch).
     for (final s in symbols) {
-      await candles.clear(s);
+      final cached = await candles.loadCached(s);
+      if (cached.isNotEmpty) _evaluateSymbol(s, notify: false);
     }
+    notifyListeners();
     await refreshAll();
     await _connectWs();
     isLoading = false;
